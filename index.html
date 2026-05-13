@@ -1015,11 +1015,12 @@ function fmt(n) {
 }
 
 // --- TÉLÉMÉTRIE EN TEMPS RÉEL --- //
+const API_BASE = 'https://fastapi-production-9398.up.railway.app';
 let telemetryUpdateCallback = null;
 
 async function fetchLiveTelemetry() {
   try {
-    const response = await fetch('http://127.0.0.1:8000/devices/esp32-001/telemetry/current');
+    const response = await fetch(API_BASE + '/devices/esp32-001/telemetry/current');
     if (!response.ok) {
       console.error('Erreur API:', response.status);
       return;
