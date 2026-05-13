@@ -390,16 +390,17 @@ const LOGO_SECODI = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAADTCAIAA
 
 // --- DATA (50 engins fictifs) --- //
 const ENGINS = [{
-  "id": "BEE-001",
-  "client": "Domaine Lefèvre",
-  "modele": "Bobard Polyvigne",
-  "region": "Beaujolais",
-  "lat": 46.0744,
-  "lon": 4.6773,
+  "id": "esp32-001",
+  "client": "Capteur ESP32",
+  "modele": "ESP32 DevKit",
+  "region": "Laboratoire",
+  "lat": 45.1885,
+  "lon": 5.7245,
   "etat": "ok",
-  "tension": 13.96,
-  "heures": 1156,
-  "derniereSync": "2026-05-06T16:00:00Z"
+  "tension": 13.85,
+  "heures": 0,
+  "derniereSync": new Date().toISOString(),
+  "historique": []
 }, {
   "id": "BEE-002",
   "client": "Château Beauregard",
@@ -985,35 +986,114 @@ function projectFR(lat, lon, w, h) {
   };
 }
 function generateHistory(engin) {
+  // Si l'engin a un historique, le retourner
+  if (engin.historique && engin.historique.length > 0) {
+    return engin.historique;
+  }
+  
+  // Sinon, créer un historique par défaut vide
   const points = [];
-  const now = new Date('2026-05-06T16:00:00Z');
-  const baseTension = engin.etat === 'critical' ? 12.5 : engin.etat === 'warning' ? 13.4 : 13.85;
-  for (let i = 84; i >= 0; i--) {
-    const t = new Date(now.getTime() - i * 2 * 3600 * 1000);
-    let tension = baseTension;
-    const hoursAgo = i * 2;
-    if (engin.etat === 'critical') {
-      if (hoursAgo < 72) tension = 13.6 - (72 - hoursAgo) / 72 * 1.4 + (Math.random() - 0.5) * 0.15;else tension = 13.7 + (Math.random() - 0.5) * 0.18;
-    } else if (engin.etat === 'warning') {
-      if (hoursAgo < 48) tension = 13.7 - (48 - hoursAgo) / 48 * 0.45 + (Math.random() - 0.5) * 0.12;else tension = 13.8 + (Math.random() - 0.5) * 0.12;
-    } else {
-      tension = baseTension + (Math.random() - 0.5) * 0.18;
-    }
+  const now = new Date();
+  const baseTension = engin.tension || 13.85;
+  
+  // Créer quelques points par défaut
+  for (let i = 9; i >= 0; i--) {
+    const t = new Date(now.getTime() - i * 10 * 60 * 1000); // 10 minutes entre chaque
     points.push({
-      label: t.toLocaleDateString('fr-FR', {
-        day: '2-digit',
-        month: '2-digit'
-      }) + ' ' + t.toLocaleTimeString('fr-FR', {
+      label: t.toLocaleTimeString('fr-FR', {
         hour: '2-digit',
         minute: '2-digit'
       }),
-      tension: parseFloat(tension.toFixed(2))
+      tension: parseFloat(baseTension.toFixed(2))
     });
   }
+  
   return points;
 }
 function fmt(n) {
   return n.toLocaleString('fr-FR');
+}
+
+// --- TÉLÉMÉTRIE EN TEMPS RÉEL --- //
+let telemetryUpdateCallback = null;
+
+async function fetchLiveTelemetry() {
+  try {
+    const response = await fetch('http://127.0.0.1:8000/devices/esp32-001/telemetry/current');
+    if (!response.ok) {
+      console.error('Erreur API:', response.status);
+      return;
+    }
+
+    const data = await response.json();
+
+    if (!data.telemetry) {
+      console.error('Structure de réponse invalide:', data);
+      return;
+    }
+
+    const telemetry = data.telemetry;
+    const spn100 = Number(telemetry.SPN_100);
+    const spn110 = Number(telemetry.SPN_110);
+    const spn168 = Number(telemetry.SPN_168);
+    const spn190 = Number(telemetry.SPN_190);
+    const spn84 = Number(telemetry.SPN_84);
+
+    const battery = Number.isFinite(spn168) ? spn168 : 13.85;
+
+    if (ENGINS && ENGINS.length > 0) {
+      ENGINS[0].tension = parseFloat(battery);
+      ENGINS[0].telemetry = {
+        spn100: Number.isFinite(spn100) ? spn100 : null,
+        spn110: Number.isFinite(spn110) ? spn110 : null,
+        spn168: Number.isFinite(spn168) ? spn168 : null,
+        spn190: Number.isFinite(spn190) ? spn190 : null,
+        spn84: Number.isFinite(spn84) ? spn84 : null
+      };
+      ENGINS[0].derniereSync = new Date().toISOString();
+
+      if (!ENGINS[0].historique) {
+        ENGINS[0].historique = [];
+      }
+
+      if (ENGINS[0].historique.length >= 100) {
+        ENGINS[0].historique.shift();
+      }
+
+      const now = new Date();
+      ENGINS[0].historique.push({
+        label: now.toLocaleTimeString('fr-FR', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        }),
+        tension: parseFloat(battery.toFixed(2))
+      });
+
+      if (battery < 12.5) {
+        ENGINS[0].etat = 'critical';
+      } else if (battery < 13.4) {
+        ENGINS[0].etat = 'warning';
+      } else {
+        ENGINS[0].etat = 'ok';
+      }
+
+      if (telemetryUpdateCallback) {
+        telemetryUpdateCallback();
+      }
+    }
+
+    console.log('Telémétrie mise à jour:', {
+      spn100: spn100,
+      spn110: spn110,
+      spn168: spn168,
+      spn190: spn190,
+      spn84: spn84,
+      historique_points: ENGINS[0] && ENGINS[0].historique ? ENGINS[0].historique.length : 0
+    });
+  } catch (error) {
+    console.error('Erreur lors de la récupération des données:', error);
+  }
 }
 
 // --- COMPOSANTS --- //
@@ -1762,6 +1842,8 @@ function Metric(props) {
 }
 function EnginDetail(props) {
   const engin = props.engin;
+  const telemetry = engin.telemetry || {};
+  const batteryValue = typeof telemetry.spn168 === 'number' ? telemetry.spn168 : engin.tension;
   const history = useMemo(function () {
     return generateHistory(engin);
   }, [engin.id]);
@@ -1788,20 +1870,20 @@ function EnginDetail(props) {
     className: "grid grid-cols-4 gap-2.5 mb-5"
   }, /*#__PURE__*/React.createElement(Metric, {
     label: "Tension batterie",
-    value: engin.tension !== null ? engin.tension.toFixed(2) : '—',
+    value: batteryValue !== null && batteryValue !== undefined ? Number(batteryValue).toFixed(2) : '—',
     unit: "V",
     warning: engin.etat === 'warning' || engin.etat === 'critical'
   }), /*#__PURE__*/React.createElement(Metric, {
     label: "R\xE9gime moteur",
-    value: "1850",
+    value: typeof telemetry.spn190 === 'number' ? telemetry.spn190.toFixed(2) : '—',
     unit: "tr/min"
   }), /*#__PURE__*/React.createElement(Metric, {
     label: "Temp\xE9rature",
-    value: "89.2",
+    value: typeof telemetry.spn110 === 'number' ? telemetry.spn110.toFixed(2) : '—',
     unit: "\xB0C"
   }), /*#__PURE__*/React.createElement(Metric, {
     label: "Heures moteur",
-    value: fmt(engin.heures),
+    value: typeof telemetry.spn100 === 'number' ? telemetry.spn100.toFixed(2) : fmt(engin.heures),
     unit: "h"
   })), engin.etat === 'critical' && /*#__PURE__*/React.createElement("div", {
     className: "bg-[#FCEBEB] border-l-4 border-l-[var(--status-critical)] px-4 py-3.5 rounded mb-5"
@@ -2077,6 +2159,18 @@ function Footer() {
 }
 function App() {
   const [tab, setTab] = useState('flotte');
+  const [, forceUpdate] = useState(0);
+  
+  // Enregistrer le callback de mise à jour pour les données en temps réel
+  useEffect(function () {
+    telemetryUpdateCallback = function () {
+      forceUpdate(prev => prev + 1);
+    };
+    return function () {
+      telemetryUpdateCallback = null;
+    };
+  }, []);
+  
   const initialEngin = ENGINS.find(function (e) {
     return e.etat === 'critical';
   }) || ENGINS[0];
@@ -2157,6 +2251,12 @@ function App() {
 // Mount
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render( /*#__PURE__*/React.createElement(App, null));
+
+// Initialiser la télémétrie en temps réel
+fetchLiveTelemetry();
+
+// Mettre à jour les données toutes les 2 secondes
+setInterval(fetchLiveTelemetry, 2000);
 </script>
 </body>
 </html>
