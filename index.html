@@ -1010,9 +1010,91 @@ function generateHistory(engin) {
   }
   
   return points;
+
+  function formatHistoryLabel(date) {
+    return date.toLocaleString('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }
+
+  function normalizeHistoryPoints(payload) {
+    const toValue = function (item) {
+      const raw = item.battery_voltage !== undefined ? item.battery_voltage : item.spn168 !== undefined ? item.spn168 : item.SPN_168 !== undefined ? item.SPN_168 : item.value !== undefined ? item.value : item.mean !== undefined ? item.mean : item.avg;
+      const n = Number(raw);
+      return Number.isFinite(n) ? n : null;
+    };
+
+    const toTimestamp = function (item) {
+      const raw = item.timestamp || item.time || item._time || item.date;
+      const d = new Date(raw);
+      return Number.isFinite(d.getTime()) ? d : null;
+    };
+
+    const source = Array.isArray(payload) ? payload : Array.isArray(payload.history) ? payload.history : Array.isArray(payload.data) ? payload.data : Array.isArray(payload.points) ? payload.points : Array.isArray(payload.results) ? payload.results : [];
+
+    const points = source.map(function (item) {
+      const ts = toTimestamp(item || {});
+      const tension = toValue(item || {});
+      if (!ts || tension === null) {
+        return null;
+      }
+      return {
+        ts: ts.getTime(),
+        label: formatHistoryLabel(ts),
+        tension: parseFloat(tension.toFixed(2))
+      };
+    }).filter(Boolean).sort(function (a, b) {
+      return a.ts - b.ts;
+    });
+
+    return points;
+  }
+
 }
 function fmt(n) {
+  const HISTORY_BUCKET = 'sentinel_data';
+  const HISTORY_CACHE_TTL_MS = 3 * 60 * 1000;
+  const historyCache = {
+    fetchedAt: 0,
+    data: null
+  };
   return n.toLocaleString('fr-FR');
+
+  async function fetchBatteryHistoryLast7Days() {
+    const now = Date.now();
+    if (historyCache.data && now - historyCache.fetchedAt < HISTORY_CACHE_TTL_MS) {
+      return historyCache.data;
+    }
+
+    const params = new URLSearchParams({
+      bucket: HISTORY_BUCKET,
+      range: '7d',
+      every: '1h',
+      aggregate: 'mean',
+      fields: 'battery_voltage,spn168'
+    });
+
+    const response = await fetch(API_BASE + '/devices/' + DEMO_DEVICE_ID + '/telemetry/history?' + params.toString(), {
+      cache: 'no-store'
+    });
+
+    if (!response.ok) {
+      throw new Error('Erreur API historique: ' + response.status);
+    }
+
+    const payload = await response.json();
+    const points = normalizeHistoryPoints(payload);
+
+    if (points.length > 0) {
+      historyCache.fetchedAt = now;
+      historyCache.data = points;
+    }
+
+    return points;
+  }
 }
 
 // --- TÉLÉMÉTRIE EN TEMPS RÉEL --- //
@@ -1846,9 +1928,47 @@ function EnginDetail(props) {
   const engin = props.engin;
   const telemetry = engin.telemetry || {};
   const batteryValue = typeof telemetry.spn168 === 'number' ? telemetry.spn168 : engin.tension;
-  const history = useMemo(function () {
+  const fallbackHistory = useMemo(function () {
     return generateHistory(engin);
   }, [engin.id]);
+  const [history, setHistory] = useState(fallbackHistory);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  useEffect(function () {
+    let isMounted = true;
+
+    async function loadHistory() {
+      setHistoryLoading(true);
+      try {
+        const remoteHistory = await fetchBatteryHistoryLast7Days();
+        if (!isMounted) return;
+
+        if (remoteHistory && remoteHistory.length > 0) {
+          setHistory(remoteHistory);
+        } else {
+          setHistory(fallbackHistory);
+        }
+      } catch (error) {
+        console.warn('Historique 7 jours indisponible, fallback local.', error);
+        if (isMounted) {
+          setHistory(fallbackHistory);
+        }
+      } finally {
+        if (isMounted) {
+          setHistoryLoading(false);
+        }
+      }
+    }
+
+    loadHistory();
+
+    return function () {
+      isMounted = false;
+    };
+  }, [engin.id, fallbackHistory]);
+
+  const xTickInterval = Math.max(1, Math.floor(history.length / 12));
+  const disableChartAnimation = history.length > 80;
   const meta = STATE_META[engin.etat];
   return /*#__PURE__*/React.createElement("div", {
     className: "bg-white rounded-md card-shadow border border-[var(--border-soft)] p-6"
@@ -1921,7 +2041,11 @@ function EnginDetail(props) {
     style: {
       height: '180px'
     }
-  }, /*#__PURE__*/React.createElement(ResponsiveContainer, {
+  }, historyLoading ? /*#__PURE__*/React.createElement("div", {
+    className: "h-full w-full flex items-center justify-center gap-2 text-[12px] text-[var(--ink-light)]"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "h-4 w-4 rounded-full border-2 border-[var(--border-soft)] border-t-[var(--secodi-blue)] animate-spin"
+  }), "Chargement historique 7 jours...") : /*#__PURE__*/React.createElement(ResponsiveContainer, {
     width: "100%",
     height: "100%"
   }, /*#__PURE__*/React.createElement(AreaChart, {
@@ -1955,7 +2079,8 @@ function EnginDetail(props) {
       fontSize: 9,
       fill: '#8A8780'
     },
-    interval: 11
+    interval: xTickInterval,
+    minTickGap: 16
   }), /*#__PURE__*/React.createElement(YAxis, {
     domain: [11.5, 14.5],
     tick: {
@@ -1972,7 +2097,7 @@ function EnginDetail(props) {
       fontSize: 12
     },
     formatter: function (v) {
-      return [v.toFixed(2) + ' V', 'Tension'];
+      return [Number(v).toFixed(2) + ' V', 'Tension'];
     }
   }), /*#__PURE__*/React.createElement(ReferenceLine, {
     y: 12.6,
@@ -2001,7 +2126,14 @@ function EnginDetail(props) {
     dataKey: "tension",
     stroke: engin.etat === 'critical' ? '#D72E2E' : engin.etat === 'warning' ? '#E89A3F' : '#2E7D32',
     strokeWidth: 2,
-    fill: "url(#tg)"
+    fill: "url(#tg)",
+    connectNulls: true,
+    dot: false,
+    activeDot: history.length > 140 ? false : {
+      r: 2
+    },
+    isAnimationActive: !disableChartAnimation,
+    animationDuration: 220
   }))))));
 }
 function Slider(props) {
