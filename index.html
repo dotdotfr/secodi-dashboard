@@ -2398,6 +2398,8 @@
     // Tri des vraies données de l'API dans les tiroirs journaliers
     if (Array.isArray(historyData) && historyData.length > 0) {
         historyData.forEach(point => {
+            const val = point.mean !== undefined ? point.mean : point.value; 
+            if (val === undefined || val === null) return;
             const pDate = new Date(point.timestamp);
             const pDateMidnight = new Date(pDate);
             pDateMidnight.setHours(0, 0, 0, 0);
