@@ -2342,7 +2342,8 @@
   }
 
   // --- GÉNÉRATEUR GÉOMÉTRIQUE DE COURBE HISTORIQUE ---
-  function updateBatteryChart(meta, currentBattery) {
+  // --- RENDU GÉOMÉTRIQUE DU GRAPHIQUE HISTORIQUE (VRAIES MOYENNES JOURNALIÈRES) ---
+  function updateBatteryChart(meta, historyData) {
     const subElement = document.getElementById('chart-sub');
     const perElement = document.getElementById('chart-per');
     const pathLine = document.getElementById('chart-path-line');
@@ -2356,7 +2357,7 @@
 
     if (!subElement || !pathLine || !pathArea) return;
 
-    subElement.textContent = `SPN 168 · agrégation horaire · pente moyenne ${meta.slope} mV/jour`;
+    subElement.textContent = `SPN 168 · moyenne journalière réelle · alerte si pente < -50 mV/j`;
     
     const options = { day: '2-digit', month: '2-digit' };
     const todayStr = new Date().toLocaleDateString('fr-FR', options);
@@ -2365,16 +2366,12 @@
     const startStr = startDate.toLocaleDateString('fr-FR', options);
     perElement.textContent = `${startStr} → ${todayStr}/${new Date().getFullYear()}`;
 
-    const minV = 20.0;
-    const maxV = 30.0;
-    const pixelsPerVolt = 15;
-    const topY = 30;
-    const thresholdV = 23.0;
+    // Calibration de l'échelle (20V à 30V)
+    const minV = 20.0, maxV = 30.0, pixelsPerVolt = 15, topY = 30, thresholdV = 23.0;
 
     if (thresholdLine) {
         const thresholdY = topY + (maxV - thresholdV) * pixelsPerVolt;
-        thresholdLine.setAttribute('y1', thresholdY);
-        thresholdLine.setAttribute('y2', thresholdY);
+        thresholdLine.setAttribute('y1', thresholdY); thresholdLine.setAttribute('y2', thresholdY);
     }
     if (thresholdLabel) {
         const labelY = topY + (maxV - thresholdV) * pixelsPerVolt - 5;
@@ -2389,47 +2386,67 @@
         `;
     }
 
-    if (currentBattery === null || currentBattery === undefined) {
-        pathLine.setAttribute('d', ''); pathArea.setAttribute('d', '');
-        if (dotsContainer) dotsContainer.innerHTML = '';
-        if (projectionLine) projectionLine.setAttribute('x1', '0');
-        return;
-    }
-
     const totalDays = 7;
-    const points = [];
-    const slopeVoltsPerDay = meta.slope / 1000;
-    const mockNoise = [0.04, -0.05, 0.06, -0.02, 0.05, -0.04, 0.02, 0];
-    const missingDays = Array.isArray(meta.missingDays) ? new Set(meta.missingDays) : new Set();
+    // Préparation des "tiroirs" pour chaque jour (de J-7 à J-0)
+    const dailySums = new Array(totalDays + 1).fill(0);
+    const dailyCounts = new Array(totalDays + 1).fill(0);
+    const dailyAverages = new Array(totalDays + 1).fill(null);
 
-    for (let i = 0; i <= totalDays; i++) {
-        if (missingDays.has(i)) {
-            points.push(null);
-            continue;
+    const todayMidnight = new Date();
+    todayMidnight.setHours(0, 0, 0, 0);
+
+    // Tri des vraies données de l'API dans les tiroirs journaliers
+    if (Array.isArray(historyData) && historyData.length > 0) {
+        historyData.forEach(point => {
+            const pDate = new Date(point.timestamp);
+            const pDateMidnight = new Date(pDate);
+            pDateMidnight.setHours(0, 0, 0, 0);
+            
+            // Calcul du nombre de jours de différence
+            const diffTime = todayMidnight - pDateMidnight;
+            const daysAgo = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+            
+            if (daysAgo >= 0 && daysAgo <= totalDays) {
+                const idx = totalDays - daysAgo; // index 0 = il y a 7 jours, index 7 = aujourd'hui
+                dailySums[idx] += point.mean;
+                dailyCounts[idx] += 1;
+            }
+        });
+
+        // Calcul de la vraie moyenne pour chaque jour
+        for (let i = 0; i <= totalDays; i++) {
+            if (dailyCounts[i] > 0) {
+                dailyAverages[i] = dailySums[i] / dailyCounts[i];
+            }
         }
-        const daysAgo = totalDays - i;
-        let v = currentBattery - (daysAgo * slopeVoltsPerDay) + mockNoise[i];
-        const x = 70 + (i * 100); 
-        const y = topY + (maxV - v) * pixelsPerVolt;
-        points.push({ x, y, v });
     }
 
+    // Conversion en pixels (si pas de donnée = null)
+    const points = [];
+    for (let i = 0; i <= totalDays; i++) {
+        const v = dailyAverages[i];
+        const x = 70 + (i * 100);
+        if (v === null) {
+            points.push(null);
+        } else {
+            const y = topY + (maxV - v) * pixelsPerVolt;
+            points.push({ x, y, v });
+        }
+    }
+
+    // Construction du tracé en ignorant proprement les jours vides
     const segments = [];
     let currentSegment = [];
     points.forEach((p) => {
         if (!p) {
-            if (currentSegment.length) {
-                segments.push(currentSegment);
-                currentSegment = [];
-            }
+            if (currentSegment.length) { segments.push(currentSegment); currentSegment = []; }
             return;
         }
         currentSegment.push(p);
     });
     if (currentSegment.length) segments.push(currentSegment);
 
-    let lineD = '';
-    let areaD = '';
+    let lineD = ''; let areaD = '';
     segments.forEach((segment) => {
         let segLine = `M ${segment[0].x} ${segment[0].y}`;
         for (let i = 1; i < segment.length; i++) { segLine += ` L ${segment[i].x} ${segment[i].y}`; }
@@ -2439,6 +2456,7 @@
     pathLine.setAttribute('d', lineD);
     pathArea.setAttribute('d', areaD.trim());
 
+    // Affichage des points (pastilles)
     if (dotsContainer) {
         let dotsHTML = '';
         points.forEach((p, idx) => {
@@ -2451,17 +2469,23 @@
         dotsContainer.innerHTML = dotsHTML;
     }
 
+    // Ligne de projection prédictive (uniquement si une dérive est définie dans les metas)
     if (projectionLine) {
         const lastP = [...points].reverse().find(p => p);
-        if (!lastP) return;
-        const nextX = lastP.x + 30;
-        const nextV = lastP.v + (30 / 100) * slopeVoltsPerDay;
-        const nextY = topY + (maxV - nextV) * pixelsPerVolt;
-        projectionLine.setAttribute('x1', lastP.x); projectionLine.setAttribute('y1', lastP.y);
-        projectionLine.setAttribute('x2', nextX); projectionLine.setAttribute('y2', nextY);
-        projectionLine.setAttribute('stroke', meta.slope < -50 ? '#B71C1C' : 'var(--warn)');
+        if (lastP && meta.slope < -50) {
+            const nextX = lastP.x + 30;
+            const nextV = lastP.v + (30 / 100) * (meta.slope / 1000);
+            const nextY = topY + (maxV - nextV) * pixelsPerVolt;
+            projectionLine.setAttribute('x1', lastP.x); projectionLine.setAttribute('y1', lastP.y);
+            projectionLine.setAttribute('x2', nextX); projectionLine.setAttribute('y2', nextY);
+            projectionLine.setAttribute('stroke', '#B71C1C');
+            projectionLine.style.display = "block";
+        } else {
+            projectionLine.style.display = "none";
+        }
     }
 
+    // Axe des dates X
     if (xAxisContainer) {
         let axisHTML = '';
         for (let i = 0; i <= totalDays; i++) {
@@ -2473,34 +2497,39 @@
     }
   }
 
-  // --- CHARGEMENT TÉLÉMÉTRIE DYNAMIQUE (VRAIE API) ---
+  // --- CHARGEMENT TÉLÉMÉTRIE DYNAMIQUE (DOUBLE APPEL API) ---
   async function loadDeviceTelemetry(deviceId) {
     try {
-      // On interroge ton backend en production sur Railway
+      // 1. On interroge les données en temps réel pour les jauges
       const response = await fetch(`${API_URL}/devices/${deviceId}/telemetry/current`);
-      if (!response.ok) throw new Error("Télémétrie introuvable pour cet engin");
-      
+      if (!response.ok) throw new Error("Télémétrie introuvable");
       const data = await response.json();
-      
-      // 👉 LA CORRECTION EST ICI : on cible le sous-objet "telemetry" du JSON renvoyé par FastAPI
       const telemetry = data.telemetry;
 
-      // On applique les vraies données d'InfluxDB aux jauges
       setGaugeValue(168, telemetry.battery_voltage, 0, 36, 1);    
       setGaugeValue(110, telemetry.coolant_temp, 0, 150, 0);      
       setGaugeValue(100, telemetry.oil_pressure, 0, 8, 1);         
       setGaugeValue(190, telemetry.engine_speed, 0, 3500, 0);      
 
-      // On met à jour le graphique avec la vraie tension actuelle
-      const meta = ENGINE_METADATA[deviceId] || { slope: 0, missingDays: [] };
-      updateBatteryChart(meta, telemetry.battery_voltage);
+      // 2. On interroge l'historique sur 7 jours pour le graphique
+      const meta = ENGINE_METADATA[deviceId] || { slope: 0 };
+      try {
+          const histResponse = await fetch(`${API_URL}/devices/${deviceId}/telemetry/history?days=7`);
+          if (histResponse.ok) {
+              const historyData = await histResponse.json();
+              updateBatteryChart(meta, historyData); // Envoi des vraies données
+          } else {
+              updateBatteryChart(meta, []); // Graphique vide si erreur
+          }
+      } catch (err) {
+          updateBatteryChart(meta, []);
+      }
 
     } catch (error) {
       console.warn(`Impossible de charger la télémétrie pour ${deviceId}:`, error);
-      // Si le boîtier est éteint ou l'API échoue, on remet les jauges à zéro
       setGaugeValue(168, null); setGaugeValue(110, null); setGaugeValue(100, null); setGaugeValue(190, null);
-      const meta = ENGINE_METADATA[deviceId] || { slope: 0, missingDays: [] };
-      updateBatteryChart(meta, null);
+      const meta = ENGINE_METADATA[deviceId] || { slope: 0 };
+      updateBatteryChart(meta, []);
     }
   }
 
