@@ -1372,12 +1372,10 @@
         <div class="alert-banner">
           <div class="alert-icon">!</div>
           <div>
-            <div class="alert-title">Dérive batterie détectée — risque de panne alternateur dans les 7 prochains jours</div>
-            <div class="alert-text">
-              La tension batterie de cet engin <strong>(SPN 168)</strong> a perdu <strong>0,42 V</strong> en 5 jours. Pente actuelle&nbsp;: <strong>−84 mV/jour</strong>. Sans intervention, le seuil critique de 23,0 V sera atteint <strong>vendredi 22 mai vers 14h</strong>. Intervention de maintenance recommandée avant cette date.
-            </div>
+            <div class="alert-title">Dérive batterie détectée — Risque de panne alternateur</div>
+            <div class="alert-text"></div>
           </div>
-          <button class="btn btn-dark">Programmer</button>
+          <button class="btn btn-dark">Programmer intervention</button>
         </div>
 
         <!-- Header engin -->
@@ -1473,18 +1471,20 @@
                 </g>
 
                 <!-- Aiguille (24V ≈ vers la droite haut) -->
-                <line x1="110" y1="100" x2="158" y2="64" stroke="#E11D48" stroke-width="2.5" stroke-linecap="round"/>
+                <g id="needle-168" style="transition: transform 0.5s ease-out;" transform="rotate(-135, 110, 100)">
+                  <line x1="110" y1="100" x2="110" y2="35" stroke="#E11D48" stroke-width="2.5" stroke-linecap="round"/>
+                </g>
                 <circle cx="110" cy="100" r="7" fill="#E8E8E8" stroke="#777" stroke-width="1"/>
                 <circle cx="110" cy="100" r="3" fill="#222"/>
 
                 <!-- Valeur digitale -->
                 <text x="110" y="135" text-anchor="middle" fill="white" font-family="Share Tech Mono" font-size="14" opacity="0.85">V</text>
-                <text x="110" y="160" text-anchor="middle" fill="white" font-family="Share Tech Mono" font-size="22" font-weight="600">23.9</text>
+                <text id="val-168" x="110" y="160" text-anchor="middle" fill="white" font-family="Share Tech Mono" font-size="22" font-weight="600">--</text>
               </svg>
             </div>
             <div class="gauge-footer">
               <span class="gf-spn">SPN 168</span>
-              <span class="gf-status warn">⚠ À surveiller</span>
+              <span id="status-168" class="gf-status warn">⚠ À surveiller</span>
             </div>
           </div>
 
@@ -1521,16 +1521,18 @@
                   <text x="165" y="155" text-anchor="middle">150</text>
                 </g>
                 <!-- 87°C => proche du milieu haut -->
-                <line x1="110" y1="100" x2="115" y2="35" stroke="#E11D48" stroke-width="2.5" stroke-linecap="round"/>
+                <g id="needle-110" style="transition: transform 0.5s ease-out;" transform="rotate(-135, 110, 100)">
+                  <line x1="110" y1="100" x2="110" y2="35" stroke="#E11D48" stroke-width="2.5" stroke-linecap="round"/>
+                </g>
                 <circle cx="110" cy="100" r="7" fill="#E8E8E8" stroke="#777" stroke-width="1"/>
                 <circle cx="110" cy="100" r="3" fill="#222"/>
                 <text x="110" y="135" text-anchor="middle" fill="white" font-family="Share Tech Mono" font-size="14" opacity="0.85">°C</text>
-                <text x="110" y="160" text-anchor="middle" fill="white" font-family="Share Tech Mono" font-size="22" font-weight="600">87</text>
+                <text id="val-110" x="110" y="160" text-anchor="middle" fill="white" font-family="Share Tech Mono" font-size="22" font-weight="600">--</text>
               </svg>
             </div>
             <div class="gauge-footer">
               <span class="gf-spn">SPN 110</span>
-              <span class="gf-status ok">✓ Normal</span>
+              <span id="status-110" class="gf-status ok">✓ Normal</span>
             </div>
           </div>
 
@@ -1567,16 +1569,18 @@
                   <text x="165" y="155" text-anchor="middle">8</text>
                 </g>
                 <!-- 4.2 bar => proche du sommet -->
-                <line x1="110" y1="100" x2="118" y2="33" stroke="#E11D48" stroke-width="2.5" stroke-linecap="round"/>
+                <g id="needle-100" style="transition: transform 0.5s ease-out;" transform="rotate(-135, 110, 100)">
+                  <line x1="110" y1="100" x2="110" y2="35" stroke="#E11D48" stroke-width="2.5" stroke-linecap="round"/>
+                </g>
                 <circle cx="110" cy="100" r="7" fill="#E8E8E8" stroke="#777" stroke-width="1"/>
                 <circle cx="110" cy="100" r="3" fill="#222"/>
                 <text x="110" y="135" text-anchor="middle" fill="white" font-family="Share Tech Mono" font-size="14" opacity="0.85">bar</text>
-                <text x="110" y="160" text-anchor="middle" fill="white" font-family="Share Tech Mono" font-size="22" font-weight="600">4.2</text>
+                <text id="val-100" x="110" y="160" text-anchor="middle" fill="white" font-family="Share Tech Mono" font-size="22" font-weight="600">--</text>
               </svg>
             </div>
             <div class="gauge-footer">
               <span class="gf-spn">SPN 100</span>
-              <span class="gf-status ok">✓ Normal</span>
+              <span id="status-100" class="gf-status ok">✓ Normal</span>
             </div>
           </div>
 
@@ -1613,16 +1617,18 @@
                   <text x="165" y="155" text-anchor="middle">3500</text>
                 </g>
                 <!-- 1850 rpm -->
-                <line x1="110" y1="100" x2="148" y2="48" stroke="#E11D48" stroke-width="2.5" stroke-linecap="round"/>
+                <g id="needle-190" style="transition: transform 0.5s ease-out;" transform="rotate(-135, 110, 100)">
+                  <line x1="110" y1="100" x2="110" y2="35" stroke="#E11D48" stroke-width="2.5" stroke-linecap="round"/>
+                </g>
                 <circle cx="110" cy="100" r="7" fill="#E8E8E8" stroke="#777" stroke-width="1"/>
                 <circle cx="110" cy="100" r="3" fill="#222"/>
                 <text x="110" y="135" text-anchor="middle" fill="white" font-family="Share Tech Mono" font-size="13" opacity="0.85">tr/min</text>
-                <text x="110" y="161" text-anchor="middle" fill="white" font-family="Share Tech Mono" font-size="22" font-weight="600">1850</text>
+                <text id="val-190" x="110" y="161" text-anchor="middle" fill="white" font-family="Share Tech Mono" font-size="22" font-weight="600">--</text>
               </svg>
             </div>
             <div class="gauge-footer">
               <span class="gf-spn">SPN 190</span>
-              <span class="gf-status ok">✓ Normal</span>
+              <span id="status-190" class="gf-status ok">✓ Normal</span>
             </div>
           </div>
         </div>
@@ -1632,9 +1638,9 @@
           <div class="chart-header">
             <div>
               <div class="chart-title">Tension batterie — Historique 7 jours</div>
-              <div class="chart-subtitle">SPN 168 · agrégation horaire · pente moyenne −84 mV/jour</div>
+              <div class="chart-subtitle" id="chart-sub">SPN 168 · agrégation horaire · pente moyenne −84 mV/jour</div>
             </div>
-            <div class="chart-period">15/05 → 22/05/2026</div>
+            <div class="chart-period" id="chart-per">15/05 → 22/05/2026</div>
           </div>
           <svg class="chart-svg" viewBox="0 0 800 240">
             <defs>
@@ -1659,22 +1665,24 @@
             <text class="threshold-label" x="775" y="125" text-anchor="end">SEUIL CRITIQUE 23.0 V</text>
 
             <!-- Data : drift 24.32 → 23.90 -->
-            <path class="chart-area" d="M 70 70 L 170 73 L 270 79 L 370 87 L 470 94 L 570 98 L 670 103 L 770 109 L 770 220 L 70 220 Z"/>
-            <path class="chart-line" d="M 70 70 L 170 73 L 270 79 L 370 87 L 470 94 L 570 98 L 670 103 L 770 109"/>
+            <path id="chart-path-area" class="chart-area" d="M 70 70 L 170 73 L 270 79 L 370 87 L 470 94 L 570 98 L 670 103 L 770 109 L 770 220 L 70 220 Z"/>
+            <path id="chart-path-line" class="chart-line" d="M 70 70 L 170 73 L 270 79 L 370 87 L 470 94 L 570 98 L 670 103 L 770 109"/>
 
             <!-- Projection rouge pointillée vers le futur (sortie de la zone) -->
-            <line x1="770" y1="109" x2="800" y2="130" stroke="#B71C1C" stroke-width="2" stroke-dasharray="4,3" opacity="0.8"/>
+            <line id="chart-projection" x1="770" y1="109" x2="800" y2="130" stroke="#B71C1C" stroke-width="2" stroke-dasharray="4,3" opacity="0.8"/>
 
-            <circle class="chart-dot" cx="70"  cy="70"  r="3.5"/>
-            <circle class="chart-dot" cx="170" cy="73"  r="3.5"/>
-            <circle class="chart-dot" cx="270" cy="79"  r="3.5"/>
-            <circle class="chart-dot" cx="370" cy="87"  r="3.5"/>
-            <circle class="chart-dot" cx="470" cy="94"  r="3.5"/>
-            <circle class="chart-dot" cx="570" cy="98"  r="3.5"/>
-            <circle class="chart-dot" cx="670" cy="103" r="3.5"/>
-            <circle class="chart-dot" cx="770" cy="109" r="5" fill="#B71C1C"/>
+            <g id="chart-dots">
+              <circle class="chart-dot" cx="70"  cy="70"  r="3.5"/>
+              <circle class="chart-dot" cx="170" cy="73"  r="3.5"/>
+              <circle class="chart-dot" cx="270" cy="79"  r="3.5"/>
+              <circle class="chart-dot" cx="370" cy="87"  r="3.5"/>
+              <circle class="chart-dot" cx="470" cy="94"  r="3.5"/>
+              <circle class="chart-dot" cx="570" cy="98"  r="3.5"/>
+              <circle class="chart-dot" cx="670" cy="103" r="3.5"/>
+              <circle class="chart-dot" cx="770" cy="109" r="5" fill="#B71C1C"/>
+            </g>
 
-            <g class="chart-axis">
+            <g class="chart-axis" id="chart-x-axis">
               <text x="70"  y="208" text-anchor="middle">15/05</text>
               <text x="170" y="208" text-anchor="middle">16/05</text>
               <text x="270" y="208" text-anchor="middle">17/05</text>
@@ -2203,6 +2211,19 @@
 <script>
   const API_URL = "https://dot-bee-fastapi-production.up.railway.app";
 
+  // --- VARIABLES GLOBALES ---
+  let currentDeviceId = null;
+  let globalFleetData = []; 
+
+  const ENGINE_METADATA = {
+    "secodi-demo-01": { name: "Bobard VSH 1500", type: "Tracteur viticole", motor: "Perkins 1106D-E66TA", hours: "3 412,8 h", client: "SECODI / Champagne Vranken", loc: "Reims (51)", slope: -12 },
+    "secodi-demo-02": { name: "Bobard VSH 1500", type: "Tracteur viticole", motor: "Perkins 1106D-E66TA", hours: "1 234,5 h", client: "SECODI / Domaine Picard", loc: "Beaune (21)", slope: -84 },
+    "secodi-demo-03": { name: "Bobard VSH 1500", type: "Tracteur viticole", motor: "Perkins 1106D-E66TA", hours: "2 890,1 h", client: "SECODI / Château Margaux", loc: "Bordeaux (33)", slope: -5 },
+    "secodi-demo-04": { name: "Groupe Perkins 404D", type: "Groupe Électrogène", motor: "Perkins 404D-22", hours: "543,2 h", client: "InoDesign Atelier", loc: "Angers (49)", slope: 0 },
+    "secodi-demo-05": { name: "Motopompe Perkins", type: "Pompe Industrielle", motor: "Perkins 403D-15", hours: "89,0 h", client: "AgriProvence", loc: "Avignon (84)", slope: -2 }
+  };
+
+  // --- NAVIGATION ---
   function showView(view) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     document.getElementById('view-' + view).classList.add('active');
@@ -2211,25 +2232,284 @@
     if (navItem) navItem.classList.add('active');
     window.scrollTo({top: 0, behavior: 'smooth'});
   }
-  
-  function selectAndGoToFiche(deviceId) {
+
+  // --- NAVIGATION ET MAJ FICHE ENGIN ---
+  async function selectAndGoToFiche(deviceId) {
+    currentDeviceId = deviceId;
     showView('fiche');
+    
+    document.querySelector('#view-fiche .pt-text').textContent = `MONITORING \\ FICHE ENGIN — ${deviceId}`;
+    const meta = ENGINE_METADATA[deviceId] || { name: "Engin Inconnu", type: "", motor: "N/A", hours: "N/A", client: "N/A", loc: "N/A", slope: 0 };
+    
+    document.querySelector('.engin-info-id').textContent = `${deviceId} · client : ${meta.client}`;
+    document.querySelector('.engin-info-name').textContent = `${meta.name} ${meta.type ? '— ' + meta.type : ''}`;
+    
+    const infoBlocks = document.querySelectorAll('.engin-header .info-block .info-value');
+    const statusTag = document.querySelector('.engin-header .status-tag');
+    const liveData = globalFleetData.find(d => d.device_id === deviceId);
+    
+    if (infoBlocks.length >= 4) {
+      infoBlocks[0].textContent = meta.motor;
+      infoBlocks[1].textContent = meta.hours;
+      infoBlocks[2].textContent = meta.loc;
+      infoBlocks[3].textContent = liveData && liveData.last_seen ? `il y a ${timeSince(liveData.last_seen)}` : "Hors-ligne";
+    }
+
+    if (liveData) {
+        if (liveData.status === "OK") {
+            statusTag.className = "status-tag ok";
+            statusTag.style.cssText = "background: var(--ok-bg); color: #1B5E20; border: 1px solid #A5D6A7;";
+            statusTag.innerHTML = `<span style="width:8px;height:8px;border-radius:50%;background:var(--ok)"></span>En service`;
+        } else if (liveData.status === "Warning") {
+            statusTag.className = "status-tag warn";
+            statusTag.style.cssText = "background: var(--warn-bg); color: #8A4D00; border: 1px solid #FFD9A0;";
+            statusTag.innerHTML = `<span style="width:8px;height:8px;border-radius:50%;background:var(--warn)"></span>À surveiller`;
+        } else if (liveData.status === "Critical") {
+            statusTag.className = "status-tag critical";
+            statusTag.style.cssText = "background: var(--critical-bg); color: #B71C1C; border: 1px solid #FFCDD2;";
+            statusTag.innerHTML = `<span style="width:8px;height:8px;border-radius:50%;background:var(--critical)"></span>Défaut actif`;
+        } else {
+            statusTag.className = "status-tag offline";
+            statusTag.style.cssText = "background: var(--offline-bg); color: var(--jt-text-soft); border: 1px solid var(--jt-border);";
+            statusTag.innerHTML = `<span style="width:8px;height:8px;border-radius:50%;background:var(--jt-muted)"></span>Hors-ligne`;
+        }
+    }
+
+    // BANDEAU PRÉDICTIF HARDOCODÉ (Pente < -50 mV/jour sur 5 jours)
+    const alertBanner = document.querySelector('#view-fiche .alert-banner');
+    if (meta.slope < -50) {
+      alertBanner.style.display = "grid"; 
+      alertBanner.querySelector('.alert-text').innerHTML = `
+        La tension batterie de cet engin <strong>(SPN 168)</strong> a perdu une moyenne critique de <strong>${Math.abs(meta.slope)} mV/jour</strong> sur les 5 derniers jours (Seuil limite : -50 mV/j). 
+        Sans intervention, le seuil de panne de 23,0 V sera atteint rapidement. Intervention de maintenance préventive recommandée.
+      `;
+    } else {
+      alertBanner.style.display = "none";
+    }
+
+    await loadDeviceTelemetry(deviceId);
   }
 
-  function updateClock() {
-    const now = new Date();
-    const hh = String(now.getHours()).padStart(2, '0');
-    const mm = String(now.getMinutes()).padStart(2, '0');
-    const el = document.getElementById('clock');
-    if (el) el.textContent = hh + ':' + mm;
+  // --- ANIMATION ET VOYANTS DES CADRANS (MUTUALISATION DES SEUILS) ---
+  function setGaugeValue(spn, value, min, max, decimals = 1) {
+    const valElement = document.getElementById(`val-${spn}`);
+    const needleElement = document.getElementById(`needle-${spn}`);
+    const statusElement = document.getElementById(`status-${spn}`);
+    
+    if (!valElement || !needleElement) return;
+
+    if (value === null || value === undefined) {
+        valElement.textContent = "--";
+        needleElement.setAttribute('transform', `rotate(-135, 110, 100)`);
+        if (statusElement) {
+            statusElement.className = "gf-status";
+            statusElement.textContent = "Inconnu";
+            statusElement.style.cssText = "background: var(--offline-bg); color: var(--jt-text-soft);";
+        }
+        return;
+    }
+
+    valElement.textContent = Number(value).toFixed(decimals);
+    let percentage = (value - min) / (max - min);
+    percentage = Math.max(0, Math.min(1, percentage));
+    const angle = -135 + (percentage * 270);
+    needleElement.setAttribute('transform', `rotate(${angle}, 110, 100)`);
+
+    // Synchronisation et calcul dynamique des voyants bas de cadran
+    if (statusElement) {
+        let status = "OK";
+        let label = "✓ Normal";
+        let style = "background: var(--ok-bg); color: var(--ok);";
+
+        if (spn === 168) { // Batterie
+            if (value < 23.0) { status = "Critical"; label = "✘ Critique"; style = "background: var(--critical-bg); color: var(--critical);"; }
+            else if (value < 25.0 || value > 29.0) { status = "Warning"; label = "⚠ À surveiller"; style = "background: var(--warn-bg); color: var(--warn);"; }
+        } else if (spn === 110) { // Surchauffe liquide
+            if (value > 100) { status = "Critical"; label = "✘ Surchauffe"; style = "background: var(--critical-bg); color: var(--critical);"; }
+            else if (value > 95) { status = "Warning"; label = "⚠ Élevée"; style = "background: var(--warn-bg); color: var(--warn);"; }
+        } else if (spn === 100) { // Pression d'huile
+            if (value < 1.0) { status = "Critical"; label = "✘ Press. Basse"; style = "background: var(--critical-bg); color: var(--critical);"; }
+            else if (value < 2.0) { status = "Warning"; label = "⚠ Faible"; style = "background: var(--warn-bg); color: var(--warn);"; }
+        } else if (spn === 190) { // Régime
+            if (value > 3200) { status = "Critical"; label = "✘ Surrégime"; style = "background: var(--critical-bg); color: var(--critical);"; }
+            else if (value > 2800) { status = "Warning"; label = "⚠ Élevé"; style = "background: var(--warn-bg); color: var(--warn);"; }
+        }
+
+        statusElement.className = `gf-status ${status.toLowerCase()}`;
+        statusElement.textContent = label;
+        statusElement.setAttribute('style', style);
+    }
   }
-  setInterval(updateClock, 30000);
-  updateClock();
 
-  // --- LOGIQUE API ---
+  // --- GÉNÉRATEUR GÉOMÉTRIQUE DE COURBE HISTORIQUE ---
+  function updateBatteryChart(meta, currentBattery) {
+    const subElement = document.getElementById('chart-sub');
+    const perElement = document.getElementById('chart-per');
+    const pathLine = document.getElementById('chart-path-line');
+    const pathArea = document.getElementById('chart-path-area');
+    const dotsContainer = document.getElementById('chart-dots');
+    const projectionLine = document.getElementById('chart-projection');
+    const xAxisContainer = document.getElementById('chart-x-axis');
+    const yAxisContainer = document.querySelector('.chart-axis:not(#chart-x-axis)');
+    const thresholdLine = document.querySelector('.chart-threshold');
+    const thresholdLabel = document.querySelector('.threshold-label');
 
+    if (!subElement || !pathLine || !pathArea) return;
+
+    subElement.textContent = `SPN 168 · agrégation horaire · pente moyenne ${meta.slope} mV/jour`;
+    
+    const options = { day: '2-digit', month: '2-digit' };
+    const todayStr = new Date().toLocaleDateString('fr-FR', options);
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 7);
+    const startStr = startDate.toLocaleDateString('fr-FR', options);
+    perElement.textContent = `${startStr} → ${todayStr}/${new Date().getFullYear()}`;
+
+    const minV = 20.0;
+    const maxV = 30.0;
+    const pixelsPerVolt = 15;
+    const topY = 30;
+    const thresholdV = 23.0;
+
+    if (thresholdLine) {
+        const thresholdY = topY + (maxV - thresholdV) * pixelsPerVolt;
+        thresholdLine.setAttribute('y1', thresholdY);
+        thresholdLine.setAttribute('y2', thresholdY);
+    }
+    if (thresholdLabel) {
+        const labelY = topY + (maxV - thresholdV) * pixelsPerVolt - 5;
+        thresholdLabel.setAttribute('y', labelY);
+    }
+    if (yAxisContainer) {
+        yAxisContainer.innerHTML = `
+          <text x="42" y="34" text-anchor="end">30.0</text>
+          <text x="42" y="84" text-anchor="end">26.7</text>
+          <text x="42" y="134" text-anchor="end">23.3</text>
+          <text x="42" y="184" text-anchor="end">20.0</text>
+        `;
+    }
+
+    if (currentBattery === null || currentBattery === undefined) {
+        pathLine.setAttribute('d', ''); pathArea.setAttribute('d', '');
+        if (dotsContainer) dotsContainer.innerHTML = '';
+        if (projectionLine) projectionLine.setAttribute('x1', '0');
+        return;
+    }
+
+    const totalDays = 7;
+    const points = [];
+    const slopeVoltsPerDay = meta.slope / 1000;
+    const mockNoise = [0.04, -0.05, 0.06, -0.02, 0.05, -0.04, 0.02, 0];
+    const missingDays = Array.isArray(meta.missingDays) ? new Set(meta.missingDays) : new Set();
+
+    for (let i = 0; i <= totalDays; i++) {
+        if (missingDays.has(i)) {
+            points.push(null);
+            continue;
+        }
+        const daysAgo = totalDays - i;
+        let v = currentBattery - (daysAgo * slopeVoltsPerDay) + mockNoise[i];
+        const x = 70 + (i * 100); 
+        const y = topY + (maxV - v) * pixelsPerVolt;
+        points.push({ x, y, v });
+    }
+
+    const segments = [];
+    let currentSegment = [];
+    points.forEach((p) => {
+        if (!p) {
+            if (currentSegment.length) {
+                segments.push(currentSegment);
+                currentSegment = [];
+            }
+            return;
+        }
+        currentSegment.push(p);
+    });
+    if (currentSegment.length) segments.push(currentSegment);
+
+    let lineD = '';
+    let areaD = '';
+    segments.forEach((segment) => {
+        let segLine = `M ${segment[0].x} ${segment[0].y}`;
+        for (let i = 1; i < segment.length; i++) { segLine += ` L ${segment[i].x} ${segment[i].y}`; }
+        lineD += (lineD ? ' ' : '') + segLine;
+        areaD += `${segLine} L ${segment[segment.length - 1].x} 220 L ${segment[0].x} 220 Z `;
+    });
+    pathLine.setAttribute('d', lineD);
+    pathArea.setAttribute('d', areaD.trim());
+
+    if (dotsContainer) {
+        let dotsHTML = '';
+        points.forEach((p, idx) => {
+            if (!p) return;
+            const isLast = idx === totalDays;
+            const r = isLast ? 5 : 3.5;
+            const fill = (isLast && meta.slope < -50) ? '#B71C1C' : 'var(--warn)';
+            dotsHTML += `<circle cx="${p.x}" cy="${p.y}" r="${r}" fill="${fill}" stroke="white" stroke-width="1.5"/>`;
+        });
+        dotsContainer.innerHTML = dotsHTML;
+    }
+
+    if (projectionLine) {
+        const lastP = [...points].reverse().find(p => p);
+        if (!lastP) return;
+        const nextX = lastP.x + 30;
+        const nextV = lastP.v + (30 / 100) * slopeVoltsPerDay;
+        const nextY = topY + (maxV - nextV) * pixelsPerVolt;
+        projectionLine.setAttribute('x1', lastP.x); projectionLine.setAttribute('y1', lastP.y);
+        projectionLine.setAttribute('x2', nextX); projectionLine.setAttribute('y2', nextY);
+        projectionLine.setAttribute('stroke', meta.slope < -50 ? '#B71C1C' : 'var(--warn)');
+    }
+
+    if (xAxisContainer) {
+        let axisHTML = '';
+        for (let i = 0; i <= totalDays; i++) {
+            const d = new Date(); d.setDate(d.getDate() - (totalDays - i));
+            const dStr = d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+            axisHTML += `<text x="${70 + (i * 100)}" y="208" text-anchor="middle">${dStr}</text>`;
+        }
+        xAxisContainer.innerHTML = axisHTML;
+    }
+  }
+
+  // --- CHARGEMENT TÉLÉMÉTRIE DYNAMIQUE (VRAIE API) ---
+  async function loadDeviceTelemetry(deviceId) {
+    try {
+      // On interroge ton backend en production sur Railway
+      const response = await fetch(`${API_URL}/devices/${deviceId}/telemetry/current`);
+      if (!response.ok) throw new Error("Télémétrie introuvable pour cet engin");
+      
+      const data = await response.json();
+      
+      // 👉 LA CORRECTION EST ICI : on cible le sous-objet "telemetry" du JSON renvoyé par FastAPI
+      const telemetry = data.telemetry;
+
+      // On applique les vraies données d'InfluxDB aux jauges
+      setGaugeValue(168, telemetry.battery_voltage, 0, 36, 1);    
+      setGaugeValue(110, telemetry.coolant_temp, 0, 150, 0);      
+      setGaugeValue(100, telemetry.oil_pressure, 0, 8, 1);         
+      setGaugeValue(190, telemetry.engine_speed, 0, 3500, 0);      
+
+      // On met à jour le graphique avec la vraie tension actuelle
+      const meta = ENGINE_METADATA[deviceId] || { slope: 0, missingDays: [] };
+      updateBatteryChart(meta, telemetry.battery_voltage);
+
+    } catch (error) {
+      console.warn(`Impossible de charger la télémétrie pour ${deviceId}:`, error);
+      // Si le boîtier est éteint ou l'API échoue, on remet les jauges à zéro
+      setGaugeValue(168, null); setGaugeValue(110, null); setGaugeValue(100, null); setGaugeValue(190, null);
+      const meta = ENGINE_METADATA[deviceId] || { slope: 0, missingDays: [] };
+      updateBatteryChart(meta, null);
+    }
+  }
+
+  // --- GESTION PARC LOGIQUE FLOTTE ---
   function timeSince(dateString) {
+    if (!dateString) return "--";
     const date = new Date(dateString);
+    if (date.getFullYear() === 2020) return "Hors-ligne"; 
+    
     const seconds = Math.floor((new Date() - date) / 1000);
     let interval = seconds / 86400;
     if (interval > 1) return Math.floor(interval) + " j";
@@ -2247,7 +2527,6 @@
     return "offline";
   }
 
-  // Couleurs adaptées à la charte Jaltest pour la carte
   function getStatusColor(status) {
     if (status === "OK") return "#2E7D32";
     if (status === "Warning") return "#D97706";
@@ -2259,24 +2538,22 @@
     try {
       const response = await fetch(`${API_URL}/devices`);
       if (!response.ok) throw new Error("Erreur réseau");
-      const devices = await response.json();
+      globalFleetData = await response.json(); 
       
-      // 1. Statistiques
-      document.getElementById('stat-total').textContent = devices.length;
-      document.getElementById('stat-ok').textContent = devices.filter(d => d.status === 'OK').length;
-      document.getElementById('stat-warn').textContent = devices.filter(d => d.status === 'Warning').length;
-      document.getElementById('stat-critical').textContent = devices.filter(d => d.status === 'Critical').length;
+      document.getElementById('stat-total').textContent = globalFleetData.length;
+      document.getElementById('stat-ok').textContent = globalFleetData.filter(d => d.status === 'OK').length;
+      document.getElementById('stat-warn').textContent = globalFleetData.filter(d => d.status === 'Warning').length;
+      document.getElementById('stat-critical').textContent = globalFleetData.filter(d => d.status === 'Critical').length;
 
-      // 2. Liste
       const listContainer = document.getElementById('device-list-container');
       listContainer.innerHTML = ""; 
 
-      devices.forEach(device => {
+      globalFleetData.forEach(device => {
         const cssClass = getStatusClass(device.status);
         const lastSeenStr = timeSince(device.last_seen);
         
         const row = document.createElement('div');
-        row.className = "device-row";
+        row.className = `device-row ${device.device_id === currentDeviceId ? 'selected' : ''}`;
         row.setAttribute('onclick', `selectAndGoToFiche('${device.device_id}')`);
         
         row.innerHTML = `
@@ -2285,25 +2562,44 @@
             <div class="device-id">${device.device_id}</div>
             <div class="device-meta">Données live #dot-BEE</div>
           </div>
-          <div class="device-last-seen">il y a ${lastSeenStr}</div>
+          <div class="device-last-seen">${lastSeenStr !== 'Hors-ligne' ? 'il y a ' + lastSeenStr : lastSeenStr}</div>
         `;
         listContainer.appendChild(row);
 
-        // 3. Carte
         const mapDot = document.getElementById(`map-dot-${device.device_id}`);
         if (mapDot) {
           mapDot.setAttribute('fill', getStatusColor(device.status));
         }
       });
+      
+      if (currentDeviceId && document.getElementById('view-fiche').classList.contains('active')) {
+          const meta = ENGINE_METADATA[currentDeviceId] || { name: "Engin Inconnu" };
+          const infoBlocks = document.querySelectorAll('.engin-header .info-block .info-value');
+          const liveData = globalFleetData.find(d => d.device_id === currentDeviceId);
+          if (infoBlocks.length >= 4 && liveData) {
+            infoBlocks[3].textContent = liveData.last_seen ? `il y a ${timeSince(liveData.last_seen)}` : "Hors-ligne";
+          }
+      }
+      
     } catch (error) {
-      console.error("Erreur:", error);
-      document.getElementById('device-list-container').innerHTML = 
-        `<div style="padding:20px; color:var(--critical); text-align:center;">Erreur API</div>`;
+      console.error("Erreur API:", error);
     }
   }
 
-  window.addEventListener('DOMContentLoaded', loadVueParc);
-  setInterval(loadVueParc, 10000);
+  function updateClock() {
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    const el = document.getElementById('clock');
+    if (el) el.textContent = hh + ':' + mm;
+  }
+
+  window.addEventListener('DOMContentLoaded', () => {
+      updateClock();
+      setInterval(updateClock, 30000);
+      loadVueParc();
+      setInterval(loadVueParc, 10000);
+  });
 </script>
 </body>
 </html>
