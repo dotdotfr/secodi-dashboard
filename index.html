@@ -2398,7 +2398,7 @@
     // Tri des vraies données de l'API dans les tiroirs journaliers
     if (Array.isArray(historyData) && historyData.length > 0) {
         historyData.forEach(point => {
-            const val = point.mean !== undefined ? point.mean : point.value; 
+            const val = point.mean;
             if (val === undefined || val === null) return;
             const pDate = new Date(point.timestamp);
             const pDateMidnight = new Date(pDate);
@@ -2410,7 +2410,7 @@
             
             if (daysAgo >= 0 && daysAgo <= totalDays) {
                 const idx = totalDays - daysAgo; // index 0 = il y a 7 jours, index 7 = aujourd'hui
-                dailySums[idx] += point.mean;
+                dailySums[idx] += val;
                 dailyCounts[idx] += 1;
             }
         });
@@ -2503,15 +2503,20 @@
   async function loadDeviceTelemetry(deviceId) {
     try {
       // 1. On interroge les données en temps réel pour les jauges
-      const response = await fetch(`${API_URL}/devices/${deviceId}/telemetry/current`);
+      const response = await fetch(`${API_URL}/devices/${deviceId}/telemetry`);
       if (!response.ok) throw new Error("Télémétrie introuvable");
       const data = await response.json();
       const telemetry = data.telemetry;
+      const fieldToGauge = {
+        battery_voltage: { spn: 168, min: 0, max: 36, decimals: 1 },
+        coolant_temp: { spn: 110, min: 0, max: 150, decimals: 0 },
+        oil_pressure: { spn: 100, min: 0, max: 8, decimals: 1 },
+        engine_speed: { spn: 190, min: 0, max: 3500, decimals: 0 }
+      };
 
-      setGaugeValue(168, telemetry.battery_voltage, 0, 36, 1);    
-      setGaugeValue(110, telemetry.coolant_temp, 0, 150, 0);      
-      setGaugeValue(100, telemetry.oil_pressure, 0, 8, 1);         
-      setGaugeValue(190, telemetry.engine_speed, 0, 3500, 0);      
+      Object.entries(fieldToGauge).forEach(([field, gauge]) => {
+        setGaugeValue(gauge.spn, telemetry?.[field], gauge.min, gauge.max, gauge.decimals);
+      });
 
       // 2. On interroge l'historique sur 7 jours pour le graphique
       const meta = ENGINE_METADATA[deviceId] || { slope: 0 };
