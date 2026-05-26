@@ -2398,15 +2398,15 @@
     // Tri des vraies données de l'API dans les tiroirs journaliers
     if (Array.isArray(historyData) && historyData.length > 0) {
         historyData.forEach(point => {
-            const val = point.mean;
+            const val = point.mean !== undefined ? point.mean : (point._value !== undefined ? point._value : point.value);
             if (val === undefined || val === null) return;
-            const pDate = new Date(point.timestamp);
+            const pDate = new Date(point.timestamp || point.time);
             const pDateMidnight = new Date(pDate);
             pDateMidnight.setHours(0, 0, 0, 0);
             
             // Calcul du nombre de jours de différence
             const diffTime = todayMidnight - pDateMidnight;
-            const daysAgo = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+            const daysAgo = Math.round(diffTime / (1000 * 60 * 60 * 24));
             
             if (daysAgo >= 0 && daysAgo <= totalDays) {
                 const idx = totalDays - daysAgo; // index 0 = il y a 7 jours, index 7 = aujourd'hui
@@ -2506,7 +2506,7 @@
       const response = await fetch(`${API_URL}/devices/${deviceId}/telemetry`);
       if (!response.ok) throw new Error("Télémétrie introuvable");
       const data = await response.json();
-      const telemetry = data.telemetry;
+      const telemetry = data.telemetry || data;
       const fieldToGauge = {
         battery_voltage: { spn: 168, min: 0, max: 36, decimals: 1 },
         coolant_temp: { spn: 110, min: 0, max: 150, decimals: 0 },
