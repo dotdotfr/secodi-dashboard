@@ -2503,7 +2503,7 @@
   async function loadDeviceTelemetry(deviceId) {
     try {
       // 1. On interroge les données en temps réel pour les jauges
-      const response = await fetch(`${API_URL}/devices/${deviceId}/telemetry`);
+      const response = await fetch(`${API_URL}/devices/${deviceId}/telemetry/current`);
       if (!response.ok) throw new Error("Télémétrie introuvable");
       const data = await response.json();
       const telemetry = data.telemetry || data;
