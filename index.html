@@ -1731,61 +1731,7 @@
                 <th>Occurrence</th>
               </tr>
             </thead>
-            <tbody>
-              <tr>
-                <td class="dm1-date">15/05 14:23</td>
-                <td class="dm1-code">DM1-0168.18</td>
-                <td class="dm1-code">168 / 18</td>
-                <td><span class="dm1-lamp lamp-amber"><span class="lamp-icon"></span>Amber</span></td>
-                <td>Tension batterie basse modérée</td>
-                <td class="dm1-active">Actif</td>
-                <td class="mono">3×</td>
-              </tr>
-              <tr>
-                <td class="dm1-date">14/05 09:11</td>
-                <td class="dm1-code">DM1-0110.16</td>
-                <td class="dm1-code">110 / 16</td>
-                <td><span class="dm1-lamp lamp-amber"><span class="lamp-icon"></span>Amber</span></td>
-                <td>Température liquide modérément élevée</td>
-                <td class="dm1-active">Actif</td>
-                <td class="mono">1×</td>
-              </tr>
-              <tr>
-                <td class="dm1-date">12/05 17:48</td>
-                <td class="dm1-code">DM1-0100.17</td>
-                <td class="dm1-code">100 / 17</td>
-                <td><span class="dm1-lamp lamp-amber"><span class="lamp-icon"></span>Amber</span></td>
-                <td>Pression d'huile basse modérée</td>
-                <td class="dm1-active">Actif</td>
-                <td class="mono">2×</td>
-              </tr>
-              <tr>
-                <td class="dm1-date">09/05 11:32</td>
-                <td class="dm1-code">DM1-0190.14</td>
-                <td class="dm1-code">190 / 14</td>
-                <td><span class="dm1-lamp lamp-red"><span class="lamp-icon"></span>Red</span></td>
-                <td>Régime moteur erratique</td>
-                <td class="dm1-resolved">Résolu</td>
-                <td class="mono">1×</td>
-              </tr>
-              <tr>
-                <td class="dm1-date">28/04 08:15</td>
-                <td class="dm1-code">DM1-0091.05</td>
-                <td class="dm1-code">91 / 5</td>
-                <td><span class="dm1-lamp lamp-amber"><span class="lamp-icon"></span>Amber</span></td>
-                <td>Capteur position pédale accélérateur — circuit ouvert</td>
-                <td class="dm1-resolved">Résolu</td>
-                <td class="mono">1×</td>
-              </tr>
-              <tr>
-                <td class="dm1-date">22/04 14:02</td>
-                <td class="dm1-code">DM1-0084.02</td>
-                <td class="dm1-code">84 / 2</td>
-                <td><span class="dm1-lamp lamp-off"><span class="lamp-icon"></span>Off</span></td>
-                <td>Signal vitesse véhicule — données erratiques</td>
-                <td class="dm1-resolved">Résolu</td>
-                <td class="mono">2×</td>
-              </tr>
+            <tbody id="dtc-table-body">
             </tbody>
           </table>
         </div>
@@ -2288,6 +2234,7 @@
     }
 
     await loadDeviceTelemetry(deviceId);
+    await loadDeviceDTCs(deviceId);
   }
 
   // --- ANIMATION ET VOYANTS DES CADRANS (MUTUALISATION DES SEUILS) ---
@@ -2537,6 +2484,54 @@
       setGaugeValue(168, null); setGaugeValue(110, null); setGaugeValue(100, null); setGaugeValue(190, null);
       const meta = ENGINE_METADATA[deviceId] || { slope: 0 };
       updateBatteryChart(meta, []);
+    }
+  }
+
+  // --- CHARGEMENT DYNAMIQUE DES CODES DEFAUTS DM1 ---
+  async function loadDeviceDTCs(deviceId) {
+    const tbody = document.getElementById('dtc-table-body');
+    if (!tbody) return;
+
+    try {
+      const response = await fetch(`${API_URL}/devices/${deviceId}/dtc`);
+      if (!response.ok) throw new Error("Erreur de récupération des DTC");
+      const data = await response.json();
+
+      tbody.innerHTML = ""; // On vide le tableau statique/précédent
+
+      if (!data.dtcs || data.dtcs.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--jt-text-soft);">Aucun défaut enregistré sur cet engin.</td></tr>`;
+        return;
+      }
+
+      data.dtcs.forEach(dtc => {
+        const tr = document.createElement('tr');
+
+        // Détermination du style de la lampe et du statut selon l'état
+        const isActif = dtc.status.toLowerCase() === 'actif';
+        const statusClass = isActif ? 'dm1-active' : 'dm1-resolved';
+        const lampClass = isActif ? 'lamp-red' : 'lamp-off';
+
+        tr.innerHTML = `
+          <td class="dm1-date">${dtc.date_str}</td>
+          <td class="dm1-code">${dtc.code}</td>
+          <td class="dm1-code">${dtc.spn_fmi}</td>
+          <td><span class="dm1-lamp ${lampClass}"><span class="lamp-icon"></span>${isActif ? 'Rouge' : 'Off'}</span></td>
+          <td>${dtc.libelle}</td>
+          <td class="${statusClass}">${dtc.status}</td>
+          <td class="mono">${dtc.occurrence}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      // Optionnel : Mettre à jour le badge rouge de la sidebar avec le nombre de défauts actifs
+      const actifsCount = data.dtcs.filter(d => d.status.toLowerCase() === 'actif').length;
+      const badge = document.querySelector('.sidebar-item[data-view="dm1"] .si-badge');
+      if (badge) badge.textContent = actifsCount;
+
+    } catch (error) {
+      console.warn(`Impossible de charger les DTC pour ${deviceId}:`, error);
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--critical);">Erreur lors du chargement des défauts.</td></tr>`;
     }
   }
 
