@@ -2160,6 +2160,7 @@
   // --- VARIABLES GLOBALES ---
   let currentDeviceId = null;
   let globalFleetData = []; 
+  let telemetryInterval = null;
 
   const ENGINE_METADATA = {
     "secodi-demo-01": { name: "Bobard VSH 1500", type: "Tracteur viticole", motor: "Perkins 1106D-E66TA", hours: "3 412,8 h", client: "SECODI / Champagne Vranken", loc: "Reims (51)", slope: -12 },
@@ -2176,6 +2177,11 @@
     document.querySelectorAll('.sidebar-item').forEach(n => n.classList.remove('active'));
     const navItem = document.querySelector('.sidebar-item[data-view="' + view + '"]');
     if (navItem) navItem.classList.add('active');
+    if (view !== 'fiche') {
+      stopTelemetryPolling();
+    } else if (currentDeviceId) {
+      startTelemetryPolling();
+    }
     window.scrollTo({top: 0, behavior: 'smooth'});
   }
 
@@ -2183,6 +2189,7 @@
   async function selectAndGoToFiche(deviceId) {
     currentDeviceId = deviceId;
     showView('fiche');
+    startTelemetryPolling();
     
     document.querySelector('#view-fiche .pt-text').textContent = `MONITORING \\ FICHE ENGIN — ${deviceId}`;
     const meta = ENGINE_METADATA[deviceId] || { name: "Engin Inconnu", type: "", motor: "N/A", hours: "N/A", client: "N/A", loc: "N/A", slope: 0 };
@@ -2235,6 +2242,21 @@
 
     await loadDeviceTelemetry(deviceId);
     await loadDeviceDTCs(deviceId);
+  }
+
+  function startTelemetryPolling() {
+    if (telemetryInterval) return;
+    telemetryInterval = setInterval(() => {
+      if (currentDeviceId && document.getElementById('view-fiche').classList.contains('active')) {
+        loadDeviceTelemetry(currentDeviceId);
+      }
+    }, 5000);
+  }
+
+  function stopTelemetryPolling() {
+    if (!telemetryInterval) return;
+    clearInterval(telemetryInterval);
+    telemetryInterval = null;
   }
 
   // --- ANIMATION ET VOYANTS DES CADRANS (MUTUALISATION DES SEUILS) ---
@@ -2630,12 +2652,6 @@
       setInterval(updateClock, 30000);
       loadVueParc();
       setInterval(loadVueParc, 10000);
-
-      setInterval(() => {
-          if (currentDeviceId && document.getElementById('view-fiche').classList.contains('active')) {
-              loadDeviceTelemetry(currentDeviceId);
-          }
-      }, 5000);
   });
 </script>
 </body>
