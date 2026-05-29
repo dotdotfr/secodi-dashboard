@@ -2528,18 +2528,19 @@ async function loadDeviceDTCs(deviceId) {
 
     data.dtcs.forEach(dtc => {
       const tr = document.createElement('tr');
-      const statusValue = (dtc.status || "").toLowerCase();
-
-      const codeFormate = `DM1-${dtc.spn}.${dtc.fmi}`;
+      const codeFormate = `DM1-${String(dtc.spn).padStart(4, '0')}.${dtc.fmi}`;
       const spnFmiFormate = `${dtc.spn} / ${dtc.fmi}`;
 
-      const statusClass = statusValue === "actif" ? "text-danger fw-bold" : "text-muted";
+      const dateApparition = new Date(dtc.ts).toLocaleString('fr-FR');
+      const dateMaj = new Date(dtc.last_ts).toLocaleString('fr-FR');
+
+      const statusClass = dtc.status === "Actif" ? "text-danger fw-bold" : "text-muted";
       const lampColor = dtc.lamp_state === "Rouge" ? "red" : "orange";
 
       tr.innerHTML = `
         <td class="dm1-date">
-          ${dtc.date_str}<br>
-          <span style="font-size: 0.8em; color: #888;">MAJ: ${dtc.last_date_str}</span>
+          ${dateApparition}<br>
+          <span style="font-size: 0.8em; color: #888;">MAJ: ${dateMaj}</span>
         </td>
         <td class="dm1-code">${codeFormate}</td>
         <td class="dm1-code">${spnFmiFormate}</td>
