@@ -2510,9 +2510,9 @@
   }
 
   // --- CHARGEMENT DYNAMIQUE DES CODES DEFAUTS DM1 ---
-  async function loadDeviceDTCs(deviceId) {
-    const tbody = document.getElementById('dtc-table-body');
-    if (!tbody) return;
+async function loadDeviceDTCs(deviceId) {
+  const tbody = document.getElementById('dtc-table-body');
+  if (!tbody) return;
 
     try {
       const response = await fetch(`${API_URL}/devices/${deviceId}/dtc`);
@@ -2528,15 +2528,14 @@
 
     data.dtcs.forEach(dtc => {
       const tr = document.createElement('tr');
+      const statusValue = (dtc.status || "").toLowerCase();
 
-      // 1. On recrée les formats de texte que l'ancien backend faisait
-      const codeFormate = `DM1-${String(dtc.spn).padStart(4, '0')}.${dtc.fmi}`;
+      const codeFormate = `DM1-${dtc.spn}.${dtc.fmi}`;
       const spnFmiFormate = `${dtc.spn} / ${dtc.fmi}`;
 
-      // 2. On adapte la couleur selon le nouvel état calculé par l'API
-      const statusClass = dtc.etat === "Actif" ? "text-danger fw-bold" : "text-muted";
+      const statusClass = statusValue === "actif" ? "text-danger fw-bold" : "text-muted";
+      const lampColor = dtc.lamp_state === "Rouge" ? "red" : "orange";
 
-      // 3. On injecte les nouvelles variables du JSON
       tr.innerHTML = `
         <td class="dm1-date">
           ${dtc.date_str}<br>
@@ -2545,18 +2544,18 @@
         <td class="dm1-code">${codeFormate}</td>
         <td class="dm1-code">${spnFmiFormate}</td>
         <td>
-          <span style="color: ${dtc.lamp_state === 'Rouge' ? 'red' : 'orange'};">●</span> ${dtc.lamp_state}
+          <span style="color: ${lampColor};">●</span> ${dtc.lamp_state}
         </td>
         <td>${dtc.libelle}</td>
-        <td class="${statusClass}">${dtc.etat}</td>
+        <td class="${statusClass}">${dtc.status}</td>
         <td class="mono">${dtc.occurrence_count}x</td>
       `;
 
       tbody.appendChild(tr);
     });
 
-      // Optionnel : Mettre à jour le badge rouge de la sidebar avec le nombre de défauts actifs
-      const actifsCount = data.dtcs.filter(d => d.status.toLowerCase() === 'actif').length;
+    // Optionnel : Mettre à jour le badge rouge de la sidebar avec le nombre de défauts actifs
+    const actifsCount = data.dtcs.filter(d => (d.status || "").toLowerCase() === "actif").length;
       const badge = document.querySelector('.sidebar-item[data-view="dm1"] .si-badge');
       if (badge) badge.textContent = actifsCount;
 
