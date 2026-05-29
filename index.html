@@ -2526,25 +2526,34 @@
         return;
       }
 
-      data.dtcs.forEach(dtc => {
-        const tr = document.createElement('tr');
+    data.dtcs.forEach(dtc => {
+      const tr = document.createElement('tr');
 
-        // Détermination du style de la lampe et du statut selon l'état
-        const isActif = dtc.status.toLowerCase() === 'actif';
-        const statusClass = isActif ? 'dm1-active' : 'dm1-resolved';
-        const lampClass = isActif ? 'lamp-red' : 'lamp-off';
+      // 1. On recrée les formats de texte que l'ancien backend faisait
+      const codeFormate = `DM1-${String(dtc.spn).padStart(4, '0')}.${dtc.fmi}`;
+      const spnFmiFormate = `${dtc.spn} / ${dtc.fmi}`;
 
-        tr.innerHTML = `
-          <td class="dm1-date">${dtc.date_str}</td>
-          <td class="dm1-code">${dtc.code}</td>
-          <td class="dm1-code">${dtc.spn_fmi}</td>
-          <td><span class="dm1-lamp ${lampClass}"><span class="lamp-icon"></span>${isActif ? 'Rouge' : 'Off'}</span></td>
-          <td>${dtc.libelle}</td>
-          <td class="${statusClass}">${dtc.status}</td>
-          <td class="mono">${dtc.occurrence}</td>
-        `;
-        tbody.appendChild(tr);
-      });
+      // 2. On adapte la couleur selon le nouvel état calculé par l'API
+      const statusClass = dtc.etat === "Actif" ? "text-danger fw-bold" : "text-muted";
+
+      // 3. On injecte les nouvelles variables du JSON
+      tr.innerHTML = `
+        <td class="dm1-date">
+          ${dtc.date_str}<br>
+          <span style="font-size: 0.8em; color: #888;">MAJ: ${dtc.last_date_str}</span>
+        </td>
+        <td class="dm1-code">${codeFormate}</td>
+        <td class="dm1-code">${spnFmiFormate}</td>
+        <td>
+          <span style="color: ${dtc.lamp_state === 'Rouge' ? 'red' : 'orange'};">●</span> ${dtc.lamp_state}
+        </td>
+        <td>${dtc.libelle}</td>
+        <td class="${statusClass}">${dtc.etat}</td>
+        <td class="mono">${dtc.occurrence_count}x</td>
+      `;
+
+      tbody.appendChild(tr);
+    });
 
       // Optionnel : Mettre à jour le badge rouge de la sidebar avec le nombre de défauts actifs
       const actifsCount = data.dtcs.filter(d => d.status.toLowerCase() === 'actif').length;
