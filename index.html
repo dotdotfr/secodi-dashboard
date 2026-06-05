@@ -2160,7 +2160,6 @@
   // --- VARIABLES GLOBALES ---
   let currentDeviceId = null;
   let globalFleetData = []; 
-  let telemetryInterval = null;
 
   const ENGINE_METADATA = {
     "secodi-demo-01": { name: "Bobard VSH 1500", type: "Tracteur viticole", motor: "Perkins 1106D-E66TA", hours: "3 412,8 h", client: "SECODI / Champagne Vranken", loc: "Reims (51)", slope: -12 },
@@ -2177,35 +2176,63 @@
     document.querySelectorAll('.sidebar-item').forEach(n => n.classList.remove('active'));
     const navItem = document.querySelector('.sidebar-item[data-view="' + view + '"]');
     if (navItem) navItem.classList.add('active');
-    if (view !== 'fiche') {
-      stopTelemetryPolling();
-    } else if (currentDeviceId) {
-      startTelemetryPolling();
-    }
     window.scrollTo({top: 0, behavior: 'smooth'});
+  }
+
+  // --- CHARGEMENT INFOS ENGIN (Component ID + Heures moteur) ---
+  async function loadDeviceInfo(deviceId) {
+    try {
+      const res = await fetch(`${API_URL}/devices/${deviceId}/info`);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
   }
 
   // --- NAVIGATION ET MAJ FICHE ENGIN ---
   async function selectAndGoToFiche(deviceId) {
     currentDeviceId = deviceId;
     showView('fiche');
-    startTelemetryPolling();
-    
+
     document.querySelector('#view-fiche .pt-text').textContent = `MONITORING \\ FICHE ENGIN — ${deviceId}`;
     const meta = ENGINE_METADATA[deviceId] || { name: "Engin Inconnu", type: "", motor: "N/A", hours: "N/A", client: "N/A", loc: "N/A", slope: 0 };
-    
-    document.querySelector('.engin-info-id').textContent = `${deviceId} · client : ${meta.client}`;
-    document.querySelector('.engin-info-name').textContent = `${meta.name} ${meta.type ? '— ' + meta.type : ''}`;
-    
+
     const infoBlocks = document.querySelectorAll('.engin-header .info-block .info-value');
-    const statusTag = document.querySelector('.engin-header .status-tag');
-    const liveData = globalFleetData.find(d => d.device_id === deviceId);
-    
+    const statusTag  = document.querySelector('.engin-header .status-tag');
+    const liveData   = globalFleetData.find(d => d.device_id === deviceId);
+
+    // Valeurs par défaut depuis ENGINE_METADATA pendant le chargement API
+    document.querySelector('.engin-info-id').textContent   = `${deviceId} · client : ${meta.client}`;
+    document.querySelector('.engin-info-name').textContent = `${meta.name}${meta.type ? ' — ' + meta.type : ''}`;
     if (infoBlocks.length >= 4) {
       infoBlocks[0].textContent = meta.motor;
       infoBlocks[1].textContent = meta.hours;
       infoBlocks[2].textContent = meta.loc;
       infoBlocks[3].textContent = liveData && liveData.last_seen ? `il y a ${timeSince(liveData.last_seen)}` : "Hors-ligne";
+    }
+
+    // Enrichissement avec les données réelles de l'API
+    const info = await loadDeviceInfo(deviceId);
+    if (info && infoBlocks.length >= 4) {
+      // Moteur : "Make Model" depuis Component ID J1939
+      if (info.make || info.model) {
+        infoBlocks[0].textContent = [info.make, info.model].filter(Boolean).join(' ');
+      }
+      // Heures moteur depuis SPN 247
+      if (info.engine_hours !== null && info.engine_hours !== undefined) {
+        infoBlocks[1].textContent = info.engine_hours.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' h';
+      }
+      // Nom de l'engin : unit_number (ex. "GEN-02") depuis Component ID
+      if (info.unit_number) {
+        document.querySelector('.engin-info-name').textContent =
+          `${info.unit_number}${meta.type ? ' — ' + meta.type : (meta.name ? ' — ' + meta.name : '')}`;
+      }
+      // N° de série dans la ligne identifiant
+      if (info.serial_number) {
+        document.querySelector('.engin-info-id').textContent =
+          `${deviceId} · S/N : ${info.serial_number} · client : ${meta.client}`;
+      }
     }
 
     if (liveData) {
@@ -2242,21 +2269,6 @@
 
     await loadDeviceTelemetry(deviceId);
     await loadDeviceDTCs(deviceId);
-  }
-
-  function startTelemetryPolling() {
-    if (telemetryInterval) return;
-    telemetryInterval = setInterval(() => {
-      if (currentDeviceId && document.getElementById('view-fiche').classList.contains('active')) {
-        loadDeviceTelemetry(currentDeviceId);
-      }
-    }, 5000);
-  }
-
-  function stopTelemetryPolling() {
-    if (!telemetryInterval) return;
-    clearInterval(telemetryInterval);
-    telemetryInterval = null;
   }
 
   // --- ANIMATION ET VOYANTS DES CADRANS (MUTUALISATION DES SEUILS) ---
@@ -2510,9 +2522,9 @@
   }
 
   // --- CHARGEMENT DYNAMIQUE DES CODES DEFAUTS DM1 ---
-async function loadDeviceDTCs(deviceId) {
-  const tbody = document.getElementById('dtc-table-body');
-  if (!tbody) return;
+  async function loadDeviceDTCs(deviceId) {
+    const tbody = document.getElementById('dtc-table-body');
+    if (!tbody) return;
 
     try {
       const response = await fetch(`${API_URL}/devices/${deviceId}/dtc`);
@@ -2526,37 +2538,28 @@ async function loadDeviceDTCs(deviceId) {
         return;
       }
 
-    data.dtcs.forEach(dtc => {
-      const tr = document.createElement('tr');
-      const codeFormate = `DM1-${String(dtc.spn).padStart(4, '0')}.${dtc.fmi}`;
-      const spnFmiFormate = `${dtc.spn} / ${dtc.fmi}`;
+      data.dtcs.forEach(dtc => {
+        const tr = document.createElement('tr');
 
-      const dateApparition = new Date(dtc.ts).toLocaleString('fr-FR');
-      const dateMaj = new Date(dtc.last_ts).toLocaleString('fr-FR');
+        // Détermination du style de la lampe et du statut selon l'état
+        const isActif = dtc.status.toLowerCase() === 'actif';
+        const statusClass = isActif ? 'dm1-active' : 'dm1-resolved';
+        const lampClass = isActif ? 'lamp-red' : 'lamp-off';
 
-      const statusClass = dtc.status === "Actif" ? "text-danger fw-bold" : "text-muted";
-      const lampColor = dtc.lamp_state === "Rouge" ? "red" : "orange";
+        tr.innerHTML = `
+          <td class="dm1-date">${dtc.date_str}</td>
+          <td class="dm1-code">${dtc.code}</td>
+          <td class="dm1-code">${dtc.spn_fmi}</td>
+          <td><span class="dm1-lamp ${lampClass}"><span class="lamp-icon"></span>${isActif ? 'Rouge' : 'Off'}</span></td>
+          <td>${dtc.libelle}</td>
+          <td class="${statusClass}">${dtc.status}</td>
+          <td class="mono">${dtc.occurrence}</td>
+        `;
+        tbody.appendChild(tr);
+      });
 
-      tr.innerHTML = `
-        <td class="dm1-date">
-          ${dateApparition}<br>
-          <span style="font-size: 0.8em; color: #888;">MAJ: ${dateMaj}</span>
-        </td>
-        <td class="dm1-code">${codeFormate}</td>
-        <td class="dm1-code">${spnFmiFormate}</td>
-        <td>
-          <span style="color: ${lampColor};">●</span> ${dtc.lamp_state}
-        </td>
-        <td>${dtc.libelle}</td>
-        <td class="${statusClass}">${dtc.status}</td>
-        <td class="mono">${dtc.occurrence_count}x</td>
-      `;
-
-      tbody.appendChild(tr);
-    });
-
-    // Optionnel : Mettre à jour le badge rouge de la sidebar avec le nombre de défauts actifs
-    const actifsCount = data.dtcs.filter(d => (d.status || "").toLowerCase() === "actif").length;
+      // Optionnel : Mettre à jour le badge rouge de la sidebar avec le nombre de défauts actifs
+      const actifsCount = data.dtcs.filter(d => d.status.toLowerCase() === 'actif').length;
       const badge = document.querySelector('.sidebar-item[data-view="dm1"] .si-badge');
       if (badge) badge.textContent = actifsCount;
 
@@ -2661,6 +2664,12 @@ async function loadDeviceDTCs(deviceId) {
       setInterval(updateClock, 30000);
       loadVueParc();
       setInterval(loadVueParc, 10000);
+
+      setInterval(() => {
+          if (currentDeviceId && document.getElementById('view-fiche').classList.contains('active')) {
+              loadDeviceTelemetry(currentDeviceId);
+          }
+      }, 5000);
   });
 </script>
 </body>
