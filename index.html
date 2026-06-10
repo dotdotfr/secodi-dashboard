@@ -614,6 +614,330 @@
     font-weight: 700;
   }
 
+  /* ==================== SECTION CONNECTIVITE ==================== */
+  .connectivity-section {
+    background: white;
+    border: 1px solid var(--jt-border);
+    border-radius: 4px;
+    margin-bottom: 18px;
+    overflow: hidden;
+  }
+
+  .connectivity-section .conn-title {
+    background: var(--jt-bg-subtle);
+    color: #303030;
+    padding: 8px 20px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    border-left: 3px solid var(--jt-orange);
+    border-bottom: 1px solid var(--jt-border);
+  }
+
+  .connectivity-grid {
+    display: grid;
+    grid-template-columns: 1.6fr 1fr 1fr;
+    gap: 1px;
+    background: var(--jt-border);
+  }
+
+  .conn-cell {
+    background: white;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    min-height: 240px;
+  }
+
+  .conn-cell .cell-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    color: #777;
+    text-transform: uppercase;
+    text-align: center;
+  }
+
+  /* --- Cellule 1 : Routeur + dot-BEE --- */
+
+  .dotbee-frame {
+    position: relative;
+    width: 100%;
+    max-width: 300px;
+    aspect-ratio: 700 / 609;
+    margin: 0 auto;
+  }
+
+  .dotbee-image {
+    width: 100%;
+    height: 100%;
+    display: block;
+    position: absolute;
+    top: 0; left: 0;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .dotbee-image.active { opacity: 1; }
+
+  /* Cercle pulsant centre pile sur la LED (50.57% / 24.30% du cadre) */
+  .led-pulse {
+    position: absolute;
+    left: 50.57%;
+    top: 24.30%;
+    width: 50px;
+    height: 50px;
+    margin-left: -25px;
+    margin-top: -25px;
+    border-radius: 50%;
+    border: 2px solid var(--pulse-color, #2E7D32);
+    opacity: 0;
+    pointer-events: none;
+    animation: led-pulse 1.8s infinite ease-out;
+  }
+
+  .led-pulse.hidden { animation: none; opacity: 0; }
+
+  .dotbee-frame.state-streaming { --pulse-color: #2E7D32; }
+  .dotbee-frame.state-catchup   { --pulse-color: #1A6EE3; }
+  .dotbee-frame.state-storage   { --pulse-color: transparent; }
+
+  @keyframes led-pulse {
+    0%   { transform: scale(0.6); opacity: 0.85; }
+    100% { transform: scale(2.2); opacity: 0; }
+  }
+
+  .dotbee-state-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    text-align: center;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+
+  .dotbee-state-label.streaming { color: #2E7D32; }
+  .dotbee-state-label.storage   { color: #C58A00; }
+  .dotbee-state-label.catchup   { color: #1A6EE3; }
+
+  /* --- Cellules 2 & 3 : Jauges circulaires (trames/seconde) --- */
+
+  .gauge-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding-top: 16px;
+  }
+
+  .circular-gauge {
+    width: 140px;
+    height: 140px;
+    position: relative;
+  }
+
+  .circular-gauge svg {
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+  }
+
+  .gauge-track {
+    stroke: var(--jt-bg-subtle);
+    stroke-width: 10;
+    fill: none;
+  }
+
+  .gauge-fill {
+    stroke-width: 10;
+    fill: none;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.5s ease-out, stroke 0.3s;
+  }
+
+  /* Les deux jauges utilisent la meme couleur quand actives, gris quand inactives */
+  .gauge-fill.active   { stroke: #1A6EE3; }
+  .gauge-fill.inactive { stroke: #BDBDBD; }
+
+  .circular-gauge .gauge-center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .circular-gauge .gauge-value {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 28px;
+    color: var(--jt-text);
+    line-height: 1;
+  }
+
+  .circular-gauge .gauge-unit {
+    font-size: 10px;
+    color: #777;
+    letter-spacing: 0.5px;
+    margin-top: 2px;
+    text-align: center;
+  }
+
+  .gauge-sub {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: #777;
+    text-align: center;
+    height: 16px;
+    min-height: 16px;
+  }
+
+  .gauge-sd-percent {
+    font-size: 10px;
+    color: #555;
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px dashed var(--jt-border);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    text-align: center;
+    width: 100%;
+  }
+
+  .gauge-sd-percent strong {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    color: var(--jt-text);
+    font-weight: 400;
+  }
+
+  /* --- Indicateur WiFi (icone SVG + nom du routeur) --- */
+
+  .wifi-status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 22px;
+    transition: opacity 0.25s;
+  }
+
+  .wifi-status.changing { opacity: 0; }
+
+  .wifi-icon-svg {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    color: var(--jt-text);
+    transition: color 0.25s;
+  }
+
+  .wifi-icon-svg.barred { color: #B71C1C; }
+
+  .wifi-icon-svg .wifi-bar {
+    stroke: #B71C1C;
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    opacity: 0;
+    transition: opacity 0.25s;
+  }
+
+  .wifi-icon-svg.barred .wifi-bar { opacity: 1; }
+
+  .conn-router-name {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 16px;
+    color: var(--jt-text);
+    letter-spacing: 0.5px;
+    transition: color 0.25s;
+  }
+
+  .conn-router-name.disconnected {
+    color: #B71C1C;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  /* --- Bandeau HORS RESEAU sur le dot-BEE pendant la coupure --- */
+
+  .offline-banner {
+    position: absolute;
+    top: -2px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-4px);
+    background: #B71C1C;
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 4px 12px;
+    border-radius: 2px;
+    white-space: nowrap;
+    z-index: 10;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s, transform 0.25s;
+    box-shadow: 0 2px 8px rgba(183, 28, 28, 0.3);
+  }
+
+  .dotbee-frame.state-storage .offline-banner {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* Pulse rouge du bandeau pour attirer l'oeil */
+  .offline-banner::before {
+    content: '';
+    position: absolute;
+    top: -4px; left: -4px; right: -4px; bottom: -4px;
+    border: 2px solid #B71C1C;
+    border-radius: 4px;
+    opacity: 0;
+    animation: banner-pulse 2s infinite;
+  }
+
+  .dotbee-frame.state-storage .offline-banner::before { opacity: 0.6; }
+
+  @keyframes banner-pulse {
+    0%   { transform: scale(1); opacity: 0.6; }
+    100% { transform: scale(1.3); opacity: 0; }
+  }
+
+  /* --- Voile gris sur l'image du dot-BEE pendant la coupure --- */
+
+  .dotbee-frame.state-storage .dotbee-image.active {
+    filter: grayscale(0.3) brightness(0.85);
+  }
+
+  /* --- Valeurs gauges figees (grisees) pendant la coupure --- */
+
+  .gauge-frozen .gauge-value { color: #9E9E9E; }
+  .gauge-frozen .gauge-fill  { stroke: #BDBDBD !important; }
+  .gauge-frozen .gauge-sub   { color: #9E9E9E; font-style: italic; }
+
+  .gauge-frozen-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    color: #B71C1C;
+    letter-spacing: 0.5px;
+    text-align: center;
+    text-transform: uppercase;
+    opacity: 0;
+    transition: opacity 0.25s;
+    margin-top: -4px;
+  }
+
+  .gauge-frozen .gauge-frozen-label { opacity: 1; }
+
+  @media (max-width: 768px) {
+    .connectivity-grid { grid-template-columns: 1fr; }
+  }
+
   /* ==================== GAUGES STYLE JALTEST ==================== */
   .gauges-grid {
     display: grid;
@@ -1426,6 +1750,86 @@
           <div class="tab" onclick="showView('diagrams')">Schémas câblage</div>
           <div class="tab" onclick="showView('components')">Composants moteur</div>
         </div>
+
+        <!-- Section Connectivite (Wi-Fi / cloud / SD) -->
+        <section class="connectivity-section">
+          <div class="conn-title">Connectivité</div>
+          <div class="connectivity-grid">
+
+            <!-- Cellule 1 : Routeur + dot-BEE physique -->
+            <div class="conn-cell">
+              <div class="cell-label">Routeur connecté</div>
+
+              <div class="wifi-status" id="conn-wifi-status">
+                <svg class="wifi-icon-svg" id="wifi-icon" viewBox="0 0 24 24" fill="currentColor">
+                  <!-- Ondes WiFi -->
+                  <path d="M12 18.5a1.5 1.5 0 110 3 1.5 1.5 0 010-3zm0-4.2c-1.78 0-3.41.66-4.66 1.74l-1.2-1.2C7.66 13.46 9.74 12.5 12 12.5s4.34.96 5.86 2.34l-1.2 1.2A6.94 6.94 0 0012 14.3zm0-4c-2.86 0-5.46 1.07-7.45 2.84l-1.2-1.2A12.45 12.45 0 0112 10.3c3.16 0 6.05 1.18 8.25 3.14l-1.2 1.2A10.95 10.95 0 0012 10.3zm0-4C8.06 6.3 4.46 7.74 1.73 10.13l-1.2-1.2A17.94 17.94 0 0112 6.3c4.42 0 8.46 1.63 11.47 4.33l-1.2 1.2A15.94 15.94 0 0012 6.3z"/>
+                  <!-- Barre rouge diagonale (visible si .barred) -->
+                  <line class="wifi-bar" x1="3" y1="21" x2="21" y2="3"/>
+                </svg>
+                <span class="conn-router-name" id="conn-router-name">—</span>
+              </div>
+
+              <div class="dotbee-frame state-streaming" id="dotbee-frame">
+                <div class="offline-banner">⚠ Hors réseau</div>
+                <img src="assets/dotbee-green.png" class="dotbee-image active" id="dotbee-img-green" alt="dot-BEE LED verte">
+                <img src="assets/dotbee-yellow.png" class="dotbee-image" id="dotbee-img-yellow" alt="dot-BEE LED jaune">
+                <img src="assets/dotbee-blue.png" class="dotbee-image" id="dotbee-img-blue" alt="dot-BEE LED bleue">
+                <div class="led-pulse" id="led-pulse"></div>
+              </div>
+
+              <div class="dotbee-state-label streaming" id="dotbee-state-label">streaming temps réel</div>
+            </div>
+
+            <!-- Cellule 2 : Jauge debit cloud (trames/seconde) -->
+            <div class="conn-cell">
+              <div class="cell-label">Débit cloud sortant</div>
+              <div class="gauge-container">
+                <div class="circular-gauge">
+                  <svg viewBox="0 0 140 140">
+                    <circle class="gauge-track" cx="70" cy="70" r="55"/>
+                    <circle class="gauge-fill inactive" id="gauge-cloud"
+                            cx="70" cy="70" r="55"
+                            stroke-dasharray="345.6"
+                            stroke-dashoffset="345.6"/>
+                  </svg>
+                  <div class="gauge-center">
+                    <div class="gauge-value" id="conn-cloud-value">0</div>
+                    <div class="gauge-unit">trames/s</div>
+                  </div>
+                </div>
+                <div class="gauge-sub" id="conn-cloud-sub">vers le cloud</div>
+                <div class="gauge-frozen-label">dernière valeur connue</div>
+              </div>
+            </div>
+
+            <!-- Cellule 3 : Jauge file d'attente SD + % SD -->
+            <div class="conn-cell">
+              <div class="cell-label">File d'attente SD</div>
+              <div class="gauge-container">
+                <div class="circular-gauge">
+                  <svg viewBox="0 0 140 140">
+                    <circle class="gauge-track" cx="70" cy="70" r="55"/>
+                    <circle class="gauge-fill inactive" id="gauge-sd"
+                            cx="70" cy="70" r="55"
+                            stroke-dasharray="345.6"
+                            stroke-dashoffset="345.6"/>
+                  </svg>
+                  <div class="gauge-center">
+                    <div class="gauge-value" id="conn-sd-value">0</div>
+                    <div class="gauge-unit">trames en attente</div>
+                  </div>
+                </div>
+                <div class="gauge-sub" id="conn-sd-sub">SD au repos</div>
+                <div class="gauge-frozen-label">dernière valeur connue</div>
+                <div class="gauge-sd-percent">
+                  Stockage SD utilisé : <strong id="conn-sd-percent">0</strong>%
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </section>
 
         <!-- GAUGES style Jaltest (cadrans noirs aiguille rouge) -->
         <div class="gauges-grid">
@@ -2481,6 +2885,91 @@
   }
 
   // --- CHARGEMENT TÉLÉMÉTRIE DYNAMIQUE (DOUBLE APPEL API) ---
+  // --- SECTION CONNECTIVITE (Wi-Fi / cloud / SD) ---
+  function updateConnectivity(data) {
+    const connected = data?.current_ssid !== null && data?.current_ssid !== undefined;
+    const cloudRate = Math.round(data?.mqtt_tx_fps || 0);
+    const sdPending = data?.sd_pending_records || 0;
+    const sdPercent = data?.sd_used_percent || 0;
+
+    // État LED : 3 cas
+    let state;
+    if (!connected)         state = 'storage';   // jaune, pas de pulse
+    else if (sdPending > 0) state = 'catchup';    // bleu, pulse bleu (déstockage)
+    else                    state = 'streaming';  // vert, pulse vert (streaming pur)
+
+    // 1. Image dot-BEE et état du cadre
+    const frame = document.getElementById('dotbee-frame');
+    frame.className = 'dotbee-frame state-' + state;
+
+    document.getElementById('dotbee-img-green').classList.toggle('active', state === 'streaming');
+    document.getElementById('dotbee-img-yellow').classList.toggle('active', state === 'storage');
+    document.getElementById('dotbee-img-blue').classList.toggle('active', state === 'catchup');
+
+    document.getElementById('led-pulse').classList.toggle('hidden', !connected);
+
+    const stateLabel = document.getElementById('dotbee-state-label');
+    stateLabel.className = 'dotbee-state-label ' + state;
+    stateLabel.textContent = {
+      streaming: 'streaming temps réel',
+      storage: 'stockage local',
+      catchup: 'déstockage en cours'
+    }[state];
+
+    // 2. Nom du routeur + icône Wi-Fi (barrée si déconnecté)
+    const wifiStatus = document.getElementById('conn-wifi-status');
+    const wifiIcon = document.getElementById('wifi-icon');
+    const routerName = document.getElementById('conn-router-name');
+    const newName = connected ? data.current_ssid : 'Hors réseau';
+
+    if (routerName.textContent !== newName) {
+      wifiStatus.classList.add('changing');
+      setTimeout(() => {
+        routerName.textContent = newName;
+        routerName.classList.toggle('disconnected', !connected);
+        wifiIcon.classList.toggle('barred', !connected);
+        wifiStatus.classList.remove('changing');
+      }, 250);
+    } else {
+      wifiIcon.classList.toggle('barred', !connected);
+      routerName.classList.toggle('disconnected', !connected);
+    }
+
+    // 3. Jauges de débit / file d'attente
+    const circumference = 2 * Math.PI * 55; // r=55
+    const maxRate = 300; // pleine échelle de la jauge cloud (trames/s)
+    const maxPending = 300; // pleine échelle de la jauge SD (trames en attente)
+
+    // Jauge cloud (mqtt_tx_fps)
+    const cloudArc = document.getElementById('gauge-cloud');
+    const ratioC = Math.min(cloudRate / maxRate, 1);
+    cloudArc.setAttribute('stroke-dashoffset', circumference * (1 - ratioC));
+    cloudArc.classList.toggle('active', cloudRate > 0);
+    cloudArc.classList.toggle('inactive', cloudRate === 0);
+    document.getElementById('conn-cloud-value').textContent = cloudRate;
+    document.getElementById('conn-cloud-sub').textContent =
+      cloudRate === 0 ? 'cloud inaccessible' : 'vers le cloud';
+
+    // Jauge SD (sd_pending_records : trames en attente de transmission)
+    const sdArc = document.getElementById('gauge-sd');
+    const ratioS = Math.min(sdPending / maxPending, 1);
+    sdArc.setAttribute('stroke-dashoffset', circumference * (1 - ratioS));
+    sdArc.classList.toggle('active', sdPending > 0);
+    sdArc.classList.toggle('inactive', sdPending === 0);
+    document.getElementById('conn-sd-value').textContent = sdPending;
+    const sdSubText = sdPending === 0
+      ? 'SD au repos'
+      : (state === 'storage' ? 'écriture sur SD' : 'lecture depuis SD');
+    document.getElementById('conn-sd-sub').textContent = sdSubText;
+
+    // 4. % SD
+    document.getElementById('conn-sd-percent').textContent = sdPercent;
+
+    // 5. État "valeurs figées" si hors réseau
+    const gaugeContainers = document.querySelectorAll('.gauge-container');
+    gaugeContainers.forEach(g => g.classList.toggle('gauge-frozen', !connected));
+  }
+
   async function loadDeviceTelemetry(deviceId) {
     try {
       // 1. On interroge les données en temps réel pour les jauges
@@ -2499,6 +2988,18 @@
         setGaugeValue(gauge.spn, telemetry?.[field], gauge.min, gauge.max, gauge.decimals);
       });
 
+      // 1bis. On interroge le statut/heartbeat (Wi-Fi / cloud / SD)
+      try {
+        const statusResponse = await fetch(`${API_URL}/devices/${deviceId}/status`);
+        if (statusResponse.ok) {
+          updateConnectivity(await statusResponse.json());
+        } else {
+          updateConnectivity({ current_ssid: null, mqtt_tx_fps: 0, sd_pending_records: 0, sd_used_percent: 0 });
+        }
+      } catch (err) {
+        updateConnectivity({ current_ssid: null, mqtt_tx_fps: 0, sd_pending_records: 0, sd_used_percent: 0 });
+      }
+
       // 2. On interroge l'historique sur 7 jours pour le graphique
       const meta = ENGINE_METADATA[deviceId] || { slope: 0 };
       try {
@@ -2516,6 +3017,7 @@
     } catch (error) {
       console.warn(`Impossible de charger la télémétrie pour ${deviceId}:`, error);
       setGaugeValue(168, null); setGaugeValue(110, null); setGaugeValue(100, null); setGaugeValue(190, null);
+      updateConnectivity({ current_ssid: null, mqtt_tx_fps: 0, sd_pending_records: 0, sd_used_percent: 0 });
       const meta = ENGINE_METADATA[deviceId] || { slope: 0 };
       updateBatteryChart(meta, []);
     }
