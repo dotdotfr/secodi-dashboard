@@ -2900,10 +2900,14 @@
     const sdPercent = data?.sd_used_percent || 0;
 
     // État LED : 3 cas
+    // Le firmware bufferise jusqu'à ~50 trames (CONFIG_DOTBEE_FORWARD_BATCH_THRESHOLD)
+    // avant envoi par lot : sd_pending_records oscille donc normalement entre 0 et ~60
+    // meme en fonctionnement temps reel. On ne considere un vrai "déstockage" qu'au-dela.
+    const SD_CATCHUP_THRESHOLD = 100;
     let state;
-    if (!connected)         state = 'storage';   // jaune, pas de pulse
-    else if (sdPending > 0) state = 'catchup';    // bleu, pulse bleu (déstockage)
-    else                    state = 'streaming';  // vert, pulse vert (streaming pur)
+    if (!connected)                            state = 'storage';   // jaune, pas de pulse
+    else if (sdPending > SD_CATCHUP_THRESHOLD) state = 'catchup';    // bleu, pulse bleu (déstockage)
+    else                                        state = 'streaming'; // vert, pulse vert (streaming pur)
 
     // 1. Image dot-BEE et état du cadre
     const frame = document.getElementById('dotbee-frame');
@@ -2961,12 +2965,12 @@
     const sdArc = document.getElementById('gauge-sd');
     const ratioS = Math.min(sdPending / maxPending, 1);
     sdArc.setAttribute('stroke-dashoffset', circumference * (1 - ratioS));
-    sdArc.classList.toggle('active', sdPending > 0);
-    sdArc.classList.toggle('inactive', sdPending === 0);
+    sdArc.classList.toggle('active', state === 'catchup');
+    sdArc.classList.toggle('inactive', state !== 'catchup');
     document.getElementById('conn-sd-value').textContent = sdPending;
-    const sdSubText = sdPending === 0
-      ? 'SD au repos'
-      : (state === 'storage' ? 'écriture sur SD' : 'lecture depuis SD');
+    const sdSubText = state === 'streaming' ? 'SD au repos'
+      : state === 'storage' ? 'écriture sur SD'
+      : 'lecture depuis SD';
     document.getElementById('conn-sd-sub').textContent = sdSubText;
 
     // 4. % SD
