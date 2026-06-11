@@ -2904,10 +2904,10 @@
     const sdPercent = data?.sd_used_percent || 0;
 
     // État LED : 3 cas
-    // Le firmware bufferise jusqu'à ~50 trames (CONFIG_DOTBEE_FORWARD_BATCH_THRESHOLD)
-    // avant envoi par lot : sd_pending_records oscille donc normalement entre 0 et ~60
-    // meme en fonctionnement temps reel. On ne considere un vrai "déstockage" qu'au-dela.
-    const SD_CATCHUP_THRESHOLD = 100;
+    // En fonctionnement normal, sd_pending_records oscille autour de 5-9 trames
+    // (mesure live). On ne considere un vrai "déstockage" qu'au-dela de ce bruit
+    // de fond, ce qui correspond a peine plus d'une seconde de coupure a ~120fps.
+    const SD_CATCHUP_THRESHOLD = 20;
     let state;
     if (!connected)                            state = 'storage';   // jaune, pas de pulse
     else if (sdPending > SD_CATCHUP_THRESHOLD) state = 'catchup';    // bleu, pulse bleu (déstockage)
