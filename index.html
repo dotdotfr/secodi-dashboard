@@ -2886,7 +2886,15 @@
   // --- CHARGEMENT TÉLÉMÉTRIE DYNAMIQUE (DOUBLE APPEL API) ---
   // --- SECTION CONNECTIVITE (Wi-Fi / cloud / SD) ---
   function updateConnectivity(data) {
-    const connected = data?.current_ssid !== null && data?.current_ssid !== undefined;
+    // Le firmware n'envoie le heartbeat que si le Wi-Fi/MQTT est connecté :
+    // en cas de coupure, current_ssid garde la dernière valeur connue (non-null).
+    // On considère donc le boîtier hors réseau si son dernier heartbeat date
+    // de plus de 3x l'intervalle d'envoi (10 s côté firmware).
+    const STALE_THRESHOLD_MS = 30000;
+    const lastSeenTs = data?.last_seen_ts;
+    const isStale = !lastSeenTs || (Date.now() - lastSeenTs) > STALE_THRESHOLD_MS;
+
+    const connected = !isStale && data?.current_ssid !== null && data?.current_ssid !== undefined && data?.current_ssid !== '';
     const cloudRate = Math.round(data?.mqtt_tx_fps || 0);
     const sdPending = data?.sd_pending_records || 0;
     const sdPercent = data?.sd_used_percent || 0;
