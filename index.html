@@ -2887,14 +2887,18 @@
   // --- SECTION CONNECTIVITE (Wi-Fi / cloud / SD) ---
   function updateConnectivity(data) {
     // Le firmware n'envoie le heartbeat que si le Wi-Fi/MQTT est connecté :
-    // en cas de coupure, current_ssid garde la dernière valeur connue (non-null).
-    // On considère donc le boîtier hors réseau si son dernier heartbeat date
-    // de plus de 3x l'intervalle d'envoi (10 s côté firmware).
+    // en cas de coupure, plus aucun heartbeat n'arrive et last_seen_ts ne bouge
+    // plus. On considère donc le boîtier hors réseau si son dernier heartbeat
+    // date de plus de 30s (3x l'intervalle nominal de 10s, marge de sécurité).
     const STALE_THRESHOLD_MS = 30000;
     const lastSeenTs = data?.last_seen_ts;
     const isStale = !lastSeenTs || (Date.now() - lastSeenTs) > STALE_THRESHOLD_MS;
 
-    const connected = !isStale && data?.current_ssid !== null && data?.current_ssid !== undefined && data?.current_ssid !== '';
+    // current_ssid ne sert qu'à l'affichage du nom du routeur : son absence
+    // ponctuelle dans une trame ne doit pas faire passer en "hors réseau" si
+    // les heartbeats/télémétrie arrivent bien (last_seen_ts frais).
+    const connected = !isStale;
+    const hasSsid = data?.current_ssid !== null && data?.current_ssid !== undefined && data?.current_ssid !== '';
     const cloudRate = Math.round(data?.mqtt_tx_fps || 0);
     const sdPending = data?.sd_pending_records || 0;
     const sdPercent = data?.sd_used_percent || 0;
@@ -2931,19 +2935,19 @@
     const wifiStatus = document.getElementById('conn-wifi-status');
     const wifiIcon = document.getElementById('wifi-icon');
     const routerName = document.getElementById('conn-router-name');
-    const newName = connected ? data.current_ssid : 'Hors réseau';
+    const newName = hasSsid ? data.current_ssid : 'Hors réseau';
 
     if (routerName.textContent !== newName) {
       wifiStatus.classList.add('changing');
       setTimeout(() => {
         routerName.textContent = newName;
-        routerName.classList.toggle('disconnected', !connected);
-        wifiIcon.classList.toggle('barred', !connected);
+        routerName.classList.toggle('disconnected', !hasSsid);
+        wifiIcon.classList.toggle('barred', !hasSsid);
         wifiStatus.classList.remove('changing');
       }, 250);
     } else {
-      wifiIcon.classList.toggle('barred', !connected);
-      routerName.classList.toggle('disconnected', !connected);
+      wifiIcon.classList.toggle('barred', !hasSsid);
+      routerName.classList.toggle('disconnected', !hasSsid);
     }
 
     // 3. Jauges de débit / file d'attente
