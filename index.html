@@ -2904,14 +2904,13 @@
     const sdPercent = data?.sd_used_percent || 0;
 
     // État LED : 3 cas
-    // En fonctionnement normal, sd_pending_records oscille autour de 5-9 trames
-    // (mesure live). On ne considere un vrai "déstockage" qu'au-dela de ce bruit
-    // de fond, ce qui correspond a peine plus d'une seconde de coupure a ~120fps.
-    const SD_CATCHUP_THRESHOLD = 20;
+    // Le firmware connait deja son propre etat (presence d'un sending.bin a
+    // vider = catchup) et l'envoie directement dans le heartbeat ("state").
+    // Le dashboard se contente d'afficher cette valeur, sans seuil arbitraire.
     let state;
-    if (!connected)                            state = 'storage';   // jaune, pas de pulse
-    else if (sdPending > SD_CATCHUP_THRESHOLD) state = 'catchup';    // bleu, pulse bleu (déstockage)
-    else                                        state = 'streaming'; // vert, pulse vert (streaming pur)
+    if (!connected)                                  state = 'storage';   // jaune, pas de pulse
+    else if (data?.connectivity_state === 'catchup') state = 'catchup';   // bleu, pulse bleu (déstockage)
+    else                                              state = 'streaming'; // vert, pulse vert (streaming pur)
 
     // 1. Image dot-BEE et état du cadre
     const frame = document.getElementById('dotbee-frame');
