@@ -2905,18 +2905,23 @@
   // --- CHARGEMENT TÉLÉMÉTRIE DYNAMIQUE (DOUBLE APPEL API) ---
   // --- SECTION CONNECTIVITE (Wi-Fi / cloud / SD) ---
   function updateConnectivity(data) {
-    // Le firmware n'envoie le heartbeat que si le Wi-Fi/MQTT est connecté :
-    // en cas de coupure, plus aucun heartbeat n'arrive et last_seen_ts ne bouge
-    // plus. On considère donc le boîtier hors réseau si son dernier heartbeat
-    // date de plus de 30s (3x l'intervalle nominal de 10s, marge de sécurité).
+    // Connectivité = état de la session MQTT elle-même (LWT / retained "online"
+    // publié par le firmware), independant du flux applicatif. mqtt_connected
+    // vaut true/false dès qu'un message d'availability a ete reçu.
+    //
+    // Fallback (mqtt_connected absent, ex: avant deploiement firmware/API) :
+    // on retombe sur la fraicheur du dernier heartbeat (last_seen_ts < 30s,
+    // soit 3x l'intervalle nominal de 10s).
     const STALE_THRESHOLD_MS = 30000;
     const lastSeenTs = data?.last_seen_ts;
     const isStale = !lastSeenTs || (Date.now() - lastSeenTs) > STALE_THRESHOLD_MS;
 
     // current_ssid ne sert qu'à l'affichage du nom du routeur : son absence
     // ponctuelle dans une trame ne doit pas faire passer en "hors réseau" si
-    // les heartbeats/télémétrie arrivent bien (last_seen_ts frais).
-    const connected = !isStale;
+    // la connectivité MQTT est bonne.
+    const connected = (data?.mqtt_connected !== null && data?.mqtt_connected !== undefined)
+      ? data.mqtt_connected
+      : !isStale;
     const hasSsid = data?.current_ssid !== null && data?.current_ssid !== undefined && data?.current_ssid !== '';
     const cloudRate = Math.round(data?.mqtt_tx_fps || 0);
     const sdPending = data?.sd_pending_records || 0;
