@@ -703,6 +703,7 @@
 
   .dotbee-frame.state-streaming { --pulse-color: #2E7D32; }
   .dotbee-frame.state-catchup   { --pulse-color: #1A6EE3; }
+  .dotbee-frame.state-flush     { --pulse-color: #1A6EE3; }
   .dotbee-frame.state-storage   { --pulse-color: transparent; }
 
   @keyframes led-pulse {
@@ -2923,7 +2924,8 @@
       ? data.mqtt_connected
       : !isStale;
     const hasSsid = data?.current_ssid !== null && data?.current_ssid !== undefined && data?.current_ssid !== '';
-    const cloudRate = Math.round(data?.mqtt_tx_fps || 0);
+    const feRate = Math.round(data?.fe_rps || 0);
+    const cloudRate = Math.round((data?.mqtt_tx_fps || 0) + feRate);
     const sdPending = data?.sd_pending_records || 0;
     const sdPercent = data?.sd_used_percent || 0;
 
@@ -2933,7 +2935,8 @@
     // Le dashboard se contente d'afficher cette valeur, sans seuil arbitraire.
     let state;
     if (!connected)                                  state = 'storage';   // jaune, pas de pulse
-    else if (data?.connectivity_state === 'catchup') state = 'catchup';   // bleu, pulse bleu (déstockage)
+    else if (data?.connectivity_state === 'catchup') state = 'catchup';   // bleu, pulse bleu (déstockage MQTT)
+    else if (data?.connectivity_state === 'flush')   state = 'flush';     // bleu, pulse bleu (flush express HTTP)
     else                                              state = 'streaming'; // vert, pulse vert (streaming pur)
 
     // 1. Image dot-BEE et état du cadre
@@ -2942,16 +2945,17 @@
 
     document.getElementById('dotbee-img-green').classList.toggle('active', state === 'streaming');
     document.getElementById('dotbee-img-yellow').classList.toggle('active', state === 'storage');
-    document.getElementById('dotbee-img-blue').classList.toggle('active', state === 'catchup');
+    document.getElementById('dotbee-img-blue').classList.toggle('active', state === 'catchup' || state === 'flush');
 
     document.getElementById('led-pulse').classList.toggle('hidden', !connected);
 
     const stateLabel = document.getElementById('dotbee-state-label');
-    stateLabel.className = 'dotbee-state-label ' + state;
+    stateLabel.className = 'dotbee-state-label ' + (state === 'flush' ? 'catchup' : state);
     stateLabel.textContent = {
       streaming: 'streaming temps réel',
       storage: 'stockage local',
-      catchup: 'déstockage en cours'
+      catchup: 'déstockage en cours',
+      flush: 'flush express actif'
     }[state];
 
     // 2. Nom du routeur + icône Wi-Fi (barrée si déconnecté)
@@ -2978,7 +2982,7 @@
     const maxRate = 300; // pleine échelle de la jauge cloud (trames/s)
     const maxPending = 300; // pleine échelle de la jauge SD (trames en attente)
 
-    // Jauge cloud (mqtt_tx_fps)
+    // Jauge cloud (déstockage total = mqtt_tx_fps + fe_rps)
     const cloudArc = document.getElementById('gauge-cloud');
     const ratioC = Math.min(cloudRate / maxRate, 1);
     cloudArc.setAttribute('stroke-dashoffset', circumference * (1 - ratioC));
@@ -2986,14 +2990,16 @@
     cloudArc.classList.toggle('inactive', cloudRate === 0);
     document.getElementById('conn-cloud-value').textContent = cloudRate;
     document.getElementById('conn-cloud-sub').textContent =
-      cloudRate === 0 ? 'cloud inaccessible' : 'vers le cloud';
+      cloudRate === 0 ? 'cloud inaccessible'
+      : feRate > 0    ? 'flush express actif'
+      :                 'vers le cloud';
 
     // Jauge SD (sd_pending_records : trames en attente de transmission)
     const sdArc = document.getElementById('gauge-sd');
     const ratioS = Math.min(sdPending / maxPending, 1);
     sdArc.setAttribute('stroke-dashoffset', circumference * (1 - ratioS));
-    sdArc.classList.toggle('active', state === 'catchup');
-    sdArc.classList.toggle('inactive', state !== 'catchup');
+    sdArc.classList.toggle('active', state === 'catchup' || state === 'flush');
+    sdArc.classList.toggle('inactive', state !== 'catchup' && state !== 'flush');
     document.getElementById('conn-sd-value').textContent = sdPending;
     const sdSubText = state === 'streaming' ? 'SD au repos'
       : state === 'storage' ? 'écriture sur SD'
