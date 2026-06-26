@@ -531,7 +531,7 @@ async function bench(cmd){
   if(CFG_RUN.MOCK) return true;
   if(!CFG_RUN.BENCH_URL){ status('BENCH_URL non renseigné — commande « '+cmd+' » non envoyée.'); return false; }
   try{
-    const r=await fetch(CFG_RUN.BENCH_URL,{method:'POST',headers:{'Content-Type':'application/json','ngrok-skip-browser-warning':'1'},body:JSON.stringify({command:cmd})});
+    const r=await fetch(CFG_RUN.BENCH_URL+'?cmd='+encodeURIComponent(cmd)+'&_='+Date.now());
     if(!r.ok) throw new Error('HTTP '+r.status); return true;
   }catch(e){ status('Échec commande « '+cmd+' » : '+e.message); return false; }
 }
