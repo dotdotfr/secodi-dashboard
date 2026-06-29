@@ -328,7 +328,10 @@ const CFG_RUN = {
        "can_rx_fps":15, "mqtt_tx_fps":12.1, "fe_rps":0,
        "sd_used_percent":23, "sd_pending_records":71760,
        "connectivity_state":"streaming|storage|flush|catchup",
-       "mqtt_connected_ts":1750000000 }
+       "mqtt_connected_ts":1782397212723 }
+   CONTRAT : mqtt_connected_ts est en MILLISECONDES (epoch ms), pas en secondes.
+   Le backend doit garantir cette unité. Alternative préférable : exposer
+   "mqtt_connected_iso" en ISO-8601, que la page prend en priorité si présent.
    rssi et engine_on optionnels jusqu'au déploiement firmware v2 :
    engine_on déduit de can_rx_fps > 0,5 ; days déduit de mqtt_connected_ts.
 
@@ -454,9 +457,12 @@ function normalizeTelemetry(raw){
   let days;
   if(raw.days !== null && raw.days !== undefined){
     days = raw.days;
-  } else if(!online && raw.mqtt_connected_ts){
-    const ts_s = raw.mqtt_connected_ts > 1e10 ? raw.mqtt_connected_ts / 1000 : raw.mqtt_connected_ts;
-    days = (Date.now() / 1000 - ts_s) / 86400;
+  } else if(!online && (raw.mqtt_connected_iso || raw.mqtt_connected_ts != null)){
+    // Contrat dot-Lake : mqtt_connected_ts est en MILLISECONDES (epoch ms).
+    // Si un jour le backend expose mqtt_connected_iso (ISO-8601), on le préfère.
+    const ms = raw.mqtt_connected_iso ? Date.parse(raw.mqtt_connected_iso)
+                                      : raw.mqtt_connected_ts;
+    days = (Date.now() - ms) / 86400000;
   } else {
     days = 0;
   }
