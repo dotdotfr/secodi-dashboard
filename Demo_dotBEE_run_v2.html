@@ -348,6 +348,7 @@ const MAN_STOP=275, WOMAN_STOP=730;
 let st={mode:'idleoff',connected:false,connecting:false,engineOn:false,activeWifi:null,
  ssidLabel:'hors portée',ssidClass:'neutral',cloud:0,sdRate:0,sdPercent:0,backlog:0,days:0,
  counterFrozen:false,frozenBacklog:0,sdFull:false,intraday:0,inWork:false,
+ dispCloud:0,dispSd:0,_led:'#2E7D32',   // valeurs lissées + couleur courante pour la boucle d'animation
  manShown:false,manImg:'static',manX:MAN_STOP, womanShown:false,womanImg:'lstatic',womanX:WOMAN_STOP};
 
 const fmt=n=>Math.round(n).toLocaleString('fr-FR').replace(/\u00a0/g,' ');
@@ -373,17 +374,11 @@ function render(){
   const wi=document.getElementById('wifi-icon'), rn=document.getElementById('router-name');
   wi.className='wifi-icon-svg'+(st.connecting?' searching':st.connected?'':' barred');
   rn.className='conn-router-name '+st.ssidClass; rn.textContent=st.ssidLabel;
-  const led = (s==='storage'||s==='offline')?'#C58A00':s==='catchup'?'#1A6EE3':s==='connecting'?'#F5A623':'#2E7D32';
+  st._led = (s==='storage'||s==='offline')?'#C58A00':s==='catchup'?'#1A6EE3':s==='connecting'?'#F5A623':'#2E7D32';
   document.getElementById('cloud-cell').classList.toggle('frozen',!st.connected);
-  const cA=document.getElementById('gauge-cloud');
-  cA.setAttribute('stroke-dashoffset',CIRC*(1-Math.min(st.cloud/GMAX,1)));
-  cA.style.stroke=st.cloud>0?led:'#CFCFCF';
-  document.getElementById('cloud-value').textContent=gfmt(st.cloud);
+  // Les jauges cloud/SD (offset + chiffre + couleur) sont peintes par animateGauges()
+  // qui lisse l'affichage vers st.cloud / st.sdRate entre deux battements de télémétrie.
   document.getElementById('cloud-sub').textContent=st.connected?(st.cloud>0?'vers le cloud':'cloud au repos'):'cloud inaccessible';
-  const sA=document.getElementById('gauge-sd');
-  sA.setAttribute('stroke-dashoffset',CIRC*(1-Math.min(st.sdRate/GMAX,1)));
-  sA.style.stroke=st.sdRate>0?led:'#CFCFCF';
-  document.getElementById('sd-rate-value').textContent=gfmt(st.sdRate);
   document.getElementById('sd-rate-sub').textContent=st.sdRate>0?'trames CAN reçues':'CAN inactif';
   document.getElementById('days-val').textContent=Math.floor(st.days);
   document.getElementById('days-val').className='big '+(st.days<0.001?'empty':(s==='catchup'?'draining':'climbing'));
@@ -579,6 +574,27 @@ function mockTick(){
   return {online:true,ssid:SSID2,rssi:-57,engine_on:false,cloud_rate:0,sd_rate:0,sd_percent:0,backlog:0,days:0,mode:'depot'};
 }
 
+/* ---- lissage d'affichage ----
+   Le matériel bat toutes les 10s (nominal), la page interrogeant toutes les 2s.
+   Plutôt que d'accélérer la carte pour le confort visuel, on anime les jauges
+   côté page : elles glissent vers la valeur cible (st.cloud / st.sdRate) à 60fps. */
+function animateGauges(){
+  const k=0.15;                                  // facteur d'approche par frame
+  const ease=(disp,tgt)=> Math.abs(tgt-disp)<1 ? tgt : disp+(tgt-disp)*k;
+  st.dispCloud=ease(st.dispCloud, st.cloud);
+  st.dispSd   =ease(st.dispSd,    st.sdRate);
+  const led=st._led;
+  const cA=document.getElementById('gauge-cloud');
+  cA.setAttribute('stroke-dashoffset',CIRC*(1-Math.min(st.dispCloud/GMAX,1)));
+  cA.style.stroke=st.dispCloud>0.5?led:'#CFCFCF';
+  document.getElementById('cloud-value').textContent=gfmt(st.dispCloud);
+  const sA=document.getElementById('gauge-sd');
+  sA.setAttribute('stroke-dashoffset',CIRC*(1-Math.min(st.dispSd/GMAX,1)));
+  sA.style.stroke=st.dispSd>0.5?led:'#CFCFCF';
+  document.getElementById('sd-rate-value').textContent=gfmt(st.dispSd);
+  requestAnimationFrame(animateGauges);
+}
+
 /* ---- init ---- */
 function initRun(){
   const badge=document.getElementById('run-mode-badge');
@@ -590,6 +606,7 @@ function initRun(){
   applyTelemetry(mockTick());
   setInterval(poll, CFG_RUN.POLL_MS);
   window.addEventListener('resize',()=>render());
+  requestAnimationFrame(animateGauges);
 }
 initRun();
 </script>
