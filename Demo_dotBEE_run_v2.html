@@ -316,7 +316,8 @@ const _p = new URLSearchParams(location.search);
 const CFG_RUN = {
   MOCK: false,                // true = données simulées embarquées (pour voir tourner la page). false = banc réel.
   TELEMETRY_URL: _p.get('telemetry') || 'https://dot-bee-fastapi-production.up.railway.app/devices/sentinel-94A9902E2F30/status',
-  BENCH_URL:     _p.get('bench')     || '',       // surchargeable via ?bench=https://xyz.ngrok-free.app/command
+  BENCH_URL:     _p.get('bench')     || '',       // surchargeable via ?bench=https://xyz.trycloudflare.com/command
+  BENCH_TOKEN:   _p.get('token')     || '',       // jeton partagé requis par le bridge, via ?token=...
   WEBCAM_EMBED:  _p.get('webcam')    || '',       // surchargeable via ?webcam=https://...
   POLL_MS: 2000               // période d'interrogation de la télémétrie
 };
@@ -531,7 +532,7 @@ async function bench(cmd){
   if(CFG_RUN.MOCK) return true;
   if(!CFG_RUN.BENCH_URL){ status('BENCH_URL non renseigné — commande « '+cmd+' » non envoyée.'); return false; }
   try{
-    const r=await fetch(CFG_RUN.BENCH_URL+'?cmd='+encodeURIComponent(cmd)+'&_='+Date.now());
+    const r=await fetch(CFG_RUN.BENCH_URL+'?cmd='+encodeURIComponent(cmd)+'&token='+encodeURIComponent(CFG_RUN.BENCH_TOKEN)+'&_='+Date.now());
     if(!r.ok) throw new Error('HTTP '+r.status); return true;
   }catch(e){ status('Échec commande « '+cmd+' » : '+e.message); return false; }
 }
