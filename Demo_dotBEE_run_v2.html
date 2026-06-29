@@ -349,6 +349,7 @@ let st={mode:'idleoff',connected:false,connecting:false,engineOn:false,activeWif
  ssidLabel:'hors portée',ssidClass:'neutral',cloud:0,sdRate:0,sdPercent:0,backlog:0,days:0,
  counterFrozen:false,frozenBacklog:0,sdFull:false,intraday:0,inWork:false,
  dispCloud:0,dispSd:0,_led:'#2E7D32',   // valeurs lissées + couleur courante pour la boucle d'animation
+ dispBacklog:0,_lastBacklogRaw:null,_lastFrameTs:0,  // backlog extrapolé entre deux battements
  manShown:false,manImg:'static',manX:MAN_STOP, womanShown:false,womanImg:'lstatic',womanX:WOMAN_STOP};
 
 const fmt=n=>Math.round(n).toLocaleString('fr-FR').replace(/\u00a0/g,' ');
@@ -385,9 +386,10 @@ function render(){
   const f=st.intraday||0, hh=Math.floor(f*24), mm=Math.floor((f*24-hh)*60);
   document.getElementById('day-fill').style.width=(f*100)+'%';
   document.getElementById('day-now').textContent=String(hh).padStart(2,'0')+':'+String(mm).padStart(2,'0');
+  // Le chiffre #frames-val est peint par animateGauges() (extrapolation linéaire) ;
+  // ici on ne fixe que la classe couleur selon l'état.
   const fv=document.getElementById('frames-val');
-  if(s==='catchup'){ fv.textContent=fmt(st.backlog); fv.className='big draining'; }
-  else { fv.textContent=fmt(st.backlog); fv.className='big '+(st.backlog<1?'empty':'climbing'); }
+  fv.className='big '+(s==='catchup'?'draining':(st.backlog<1?'empty':'climbing'));
   document.getElementById('sd-pct').textContent=Math.floor(st.sdPercent)+' %';
   const sf=document.getElementById('sd-fill'); sf.style.width=st.sdPercent+'%';
   sf.style.background=s==='catchup'?'var(--blue)':(st.sdFull?'var(--red)':(st.sdPercent>78?'var(--amber)':'var(--green)'));
@@ -490,7 +492,7 @@ function applyTelemetry(t){
     st.engineOn = !!(t && t.engine_on);
     st.ssidLabel='hors réseau'; st.ssidClass='disconnected';
     if(t){ if(t.sd_percent!=null) st.sdPercent=t.sd_percent;
-           if(t.backlog!=null){ st.frozenBacklog=t.backlog; st.backlog=t.backlog; }
+           if(t.backlog!=null){ anchorBacklog(t.backlog); st.frozenBacklog=t.backlog; st.backlog=t.backlog; }
            st.sdRate=t.sd_rate||0; }
     st.sdFull=st.sdPercent>=100;
     st.manShown=false; st.womanShown=false;
@@ -502,7 +504,7 @@ function applyTelemetry(t){
   st.engineOn=!!t.engine_on;
   st.cloud=t.cloud_rate||0; st.sdRate=t.sd_rate||0;
   if(t.sd_percent!=null) st.sdPercent=t.sd_percent;
-  if(t.backlog!=null) st.backlog=t.backlog;
+  if(t.backlog!=null){ anchorBacklog(t.backlog); st.backlog=t.backlog; }
   st.sdFull=st.sdPercent>=100;
   st.mode = t.mode || ((st.cloud > (st.sdRate*1.2) && st.backlog>1) ? 'catchup' : 'depot');
   if(st.activeWifi==='man'){ st.manShown=true; st.manImg='static'; st.manX=MAN_STOP; st.womanShown=false; }
@@ -578,11 +580,25 @@ function mockTick(){
    Le matériel bat toutes les 10s (nominal), la page interrogeant toutes les 2s.
    Plutôt que d'accélérer la carte pour le confort visuel, on anime les jauges
    côté page : elles glissent vers la valeur cible (st.cloud / st.sdRate) à 60fps. */
-function animateGauges(){
+// Ré-ancre le backlog affiché UNIQUEMENT quand le backend renvoie une valeur
+// différente (nouveau battement ~10s) — pas à chaque poll (2s) qui répète la même.
+function anchorBacklog(raw){
+  if(raw !== st._lastBacklogRaw){ st.dispBacklog = raw; st._lastBacklogRaw = raw; }
+}
+
+function animateGauges(now){
   const k=0.15;                                  // facteur d'approche par frame
   const ease=(disp,tgt)=> Math.abs(tgt-disp)<1 ? tgt : disp+(tgt-disp)*k;
   st.dispCloud=ease(st.dispCloud, st.cloud);
   st.dispSd   =ease(st.dispSd,    st.sdRate);
+  // Compteur de trames restantes : descente (ou montée) linéaire au débit NET.
+  // débit net = cloud - local : on vide vers le cloud pendant que de nouvelles
+  // trames arrivent localement, donc le backlog descend à (cloud - local) tr/s.
+  const dt = st._lastFrameTs ? (now - st._lastFrameTs)/1000 : 0;
+  st._lastFrameTs = now;
+  const netDrain = st.cloud - st.sdRate;         // >0 = descend, <0 = monte (stockage)
+  st.dispBacklog = Math.max(0, st.dispBacklog - netDrain*dt);
+  document.getElementById('frames-val').textContent = fmt(Math.round(st.dispBacklog));
   const led=st._led;
   const cA=document.getElementById('gauge-cloud');
   cA.setAttribute('stroke-dashoffset',CIRC*(1-Math.min(st.dispCloud/GMAX,1)));
