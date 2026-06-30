@@ -349,7 +349,7 @@ let st={mode:'idleoff',connected:false,connecting:false,engineOn:false,activeWif
  ssidLabel:'hors portée',ssidClass:'neutral',cloud:0,sdRate:0,sdPercent:0,backlog:0,days:0,
  counterFrozen:false,frozenBacklog:0,sdFull:false,intraday:0,inWork:false,
  dispCloud:0,dispSd:0,_led:'#2E7D32',   // valeurs lissées + couleur courante pour la boucle d'animation
- dispBacklog:0,_lastBacklogRaw:null,_lastFrameTs:0,  // backlog extrapolé entre deux battements
+ dispBacklog:0,_lastBacklogRaw:null,backlogAnchor:0,backlogAnchorTs:0,  // backlog : valeur affichée + ancre réelle (valeur, instant)
  manShown:false,manImg:'static',manX:MAN_STOP, womanShown:false,womanImg:'lstatic',womanX:WOMAN_STOP};
 
 const fmt=n=>Math.round(n).toLocaleString('fr-FR').replace(/\u00a0/g,' ');
@@ -580,10 +580,16 @@ function mockTick(){
    Le matériel bat toutes les 10s (nominal), la page interrogeant toutes les 2s.
    Plutôt que d'accélérer la carte pour le confort visuel, on anime les jauges
    côté page : elles glissent vers la valeur cible (st.cloud / st.sdRate) à 60fps. */
-// Ré-ancre le backlog affiché UNIQUEMENT quand le backend renvoie une valeur
-// différente (nouveau battement ~10s) — pas à chaque poll (2s) qui répète la même.
+// Pose une nouvelle ANCRE (valeur réelle + instant) UNIQUEMENT quand le backend
+// renvoie une valeur différente (nouveau battement ~10s) — pas à chaque poll (2s)
+// qui répète la même. On n'écrit JAMAIS dispBacklog ici : la correction se fait
+// par lissage progressif dans la boucle (évite le rebond en fin de purge).
 function anchorBacklog(raw){
-  if(raw !== st._lastBacklogRaw){ st.dispBacklog = raw; st._lastBacklogRaw = raw; }
+  if(raw !== st._lastBacklogRaw){
+    st.backlogAnchor   = raw;
+    st.backlogAnchorTs = performance.now();
+    st._lastBacklogRaw = raw;
+  }
 }
 
 function animateGauges(now){
@@ -591,13 +597,19 @@ function animateGauges(now){
   const ease=(disp,tgt)=> Math.abs(tgt-disp)<1 ? tgt : disp+(tgt-disp)*k;
   st.dispCloud=ease(st.dispCloud, st.cloud);
   st.dispSd   =ease(st.dispSd,    st.sdRate);
-  // Compteur de trames restantes : descente (ou montée) linéaire au débit NET.
-  // débit net = cloud - local : on vide vers le cloud pendant que de nouvelles
-  // trames arrivent localement, donc le backlog descend à (cloud - local) tr/s.
-  const dt = st._lastFrameTs ? (now - st._lastFrameTs)/1000 : 0;
-  st._lastFrameTs = now;
+  // Compteur de trames restantes.
+  // 1) Prédiction linéaire depuis l'ancre au débit NET = cloud - local : on vide
+  //    vers le cloud pendant que de nouvelles trames arrivent localement.
+  //    Bornée à zéro -> jamais de négatif (garde-fou 1).
   const netDrain = st.cloud - st.sdRate;         // >0 = descend, <0 = monte (stockage)
-  st.dispBacklog = Math.max(0, st.dispBacklog - netDrain*dt);
+  const elapsed  = st.backlogAnchorTs ? (now - st.backlogAnchorTs)/1000 : 0;
+  const predicted = Math.max(0, st.backlogAnchor - netDrain*elapsed);
+  // 2) L'affichage GLISSE vers la prédiction au lieu de la suivre sèchement :
+  //    - au ré-ancrage (battement), la correction de dérive est absorbée en douceur
+  //      au lieu d'un saut (garde-fou 3) ;
+  //    - quand predicted atteint 0, le glissement décélère vers zéro au lieu d'une
+  //      chute nette (garde-fou 2 : atterrissage doux en fin de purge).
+  st.dispBacklog = ease(st.dispBacklog, predicted);
   document.getElementById('frames-val').textContent = fmt(Math.round(st.dispBacklog));
   const led=st._led;
   const cA=document.getElementById('gauge-cloud');
