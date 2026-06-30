@@ -1086,6 +1086,15 @@
   .dm1-active   { color: var(--critical); font-weight: 700; }
   .dm1-resolved { color: var(--jt-muted); }
 
+  .dm1-pagination {
+    display: flex; align-items: center; justify-content: flex-end; gap: 12px;
+    padding: 12px 16px; border-top: 1px solid var(--jt-border);
+  }
+  .dm1-pagination:empty { display: none; }
+  .dm1-pg-info { font-size: 11.5px; color: var(--jt-text-soft); margin-right: auto; font-family: 'Share Tech Mono', monospace; }
+  .dm1-pg-page { font-size: 11.5px; color: var(--jt-muted); font-family: 'Share Tech Mono', monospace; }
+  .dm1-pagination .btn[disabled] { opacity: .4; cursor: not-allowed; pointer-events: none; }
+
   /* ==================== RIGHT RAIL ==================== */
   .right-rail {
     background: var(--jt-orange);
@@ -2157,6 +2166,7 @@
             <tbody id="dtc-table-body">
             </tbody>
           </table>
+          <div class="dm1-pagination" id="dm1-pagination"></div>
         </div>
 
       </div>
@@ -2591,6 +2601,33 @@
     "secodi-demo-04": { name: "Groupe Perkins 404D", type: "Groupe Électrogène", motor: "Perkins 404D-22", hours: "543,2 h", client: "InoDesign Atelier", loc: "Angers (49)", slope: 0 },
     "secodi-demo-05": { name: "Motopompe Perkins", type: "Pompe Industrielle", motor: "Perkins 403D-15", hours: "89,0 h", client: "AgriProvence", loc: "Avignon (84)", slope: -2 }
   };
+
+  // --- DÉCODAGE DES "SPN" CONCATÉNÉS (artéfact de multiplexage J1939) ---
+  // Sur certaines trames DM1, le SPN (19 bits) et le FMI (5 bits) sont lus comme un
+  // seul entier au lieu d'être séparés :  valeur = SPN*32 + FMI.
+  // On retrouve donc le vrai code par  SPN = valeur>>5 (valeur//32)  et  FMI = valeur&31.
+  // Les libellés ci-dessous proviennent de la doc Perkins/CAT (SPN réels 359 → 14336).
+  const J1939_CONCAT_FIX = {
+    180449: { spn: 5639,  fmi: 1,  libelle: "Capteur de suie RF (canal 2) — signal trop bas · DPF possiblement fissuré" },
+    180421: { spn: 5638,  fmi: 5,  libelle: "Capteur de suie RF — circuit ouvert / courant faible" },
+    448062: { spn: 14001, fmi: 30, libelle: "Protection moteur — instruction spéciale requise (régénération de service)" },
+    11519:  { spn: 359,   fmi: 31, libelle: "ISOBUS — rendement masse sèche/surface (capteur outil, hors moteur)" },
+    406816: { spn: 12713, fmi: 0,  libelle: "Étage de puissance préchauffage — surintensité (relais/bougies)" },
+    406941: { spn: 12716, fmi: 29, libelle: "Frein d'échappement — échec de calibration (papillon grippé)" },
+    458781: { spn: 14336, fmi: 29, libelle: "Capteur NOx — erreur de plausibilité (qualité AdBlue / injecteur SCR)" },
+  };
+  // 0xFFFF = valeur "non disponible" J1939 → trame DM1 vide (aucun défaut actif), à écarter.
+  const SPN_TRAME_VIDE = 65535;
+
+  // Libellés J1939 standards absents du dictionnaire backend (repli avant "non documenté").
+  const J1939_STD_LABELS = {
+    32: "Position vanne EGR 1",
+  };
+
+  // --- PAGINATION DM1 ---
+  const DTC_PAGE_SIZE = 50;
+  let dtcRows = [];     // défauts enrichis + triés (récents d'abord)
+  let dtcPage = 0;      // page courante (0-indexée)
 
   // --- NAVIGATION ---
   function showView(view) {
@@ -3087,11 +3124,42 @@
     const resolus = dtcs.length - actifs;
     summary.textContent = `${actifs} défaut${actifs > 1 ? 's' : ''} actif${actifs > 1 ? 's' : ''} · ${resolus} défaut${resolus > 1 ? 's' : ''} résolu${resolus > 1 ? 's' : ''}`;
 
-    const lastUpdate = dtcs.reduce((latest, d) => Math.max(latest, d.last_ts || 0), 0);
+    const fmtJour = ts => new Date(ts).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const stamps = dtcs.map(d => d.last_ts || d.ts || 0).filter(Boolean);
+    const lastUpdate = stamps.length ? Math.max(...stamps) : 0;
+    const firstSeen  = stamps.length ? Math.min(...stamps) : 0;
+    const periodeStr = stamps.length ? `du ${fmtJour(firstSeen)} au ${fmtJour(lastUpdate)}` : '—';
     const lastUpdateStr = lastUpdate
       ? new Date(lastUpdate).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
       : '—';
-    meta.textContent = `Codes DM1 (J1939) · 30 derniers jours · MAJ ${lastUpdateStr}`;
+    meta.textContent = `Codes DM1 (J1939) · ${dtcs.length} défaut${dtcs.length > 1 ? 's' : ''} · ${periodeStr} · MAJ ${lastUpdateStr}`;
+  }
+
+  // Un libellé backend est considéré "manquant" s'il est générique "Défaut inconnu (…)".
+  function isLibelleManquant(lib) {
+    return !lib || /^d[ée]faut inconnu/i.test(lib.trim());
+  }
+
+  // Normalise un défaut : décode l'artéfact de concaténation (SPN*32+FMI) puis
+  // résout le meilleur libellé. Renvoie null pour les trames vides (à écarter).
+  //  1) "SPN" concaténé connu → vrai SPN/FMI + libellé doc constructeur ;
+  //  2) libellé backend s'il est explicite ;
+  //  3) auto-réparation : libellé connu d'une autre trame du même SPN/FMI
+  //     (le backend nomme les trames récentes mais a laissé les anciennes périmées) ;
+  //  4) repli propre "SPN non documenté (n)".
+  function normalizeDTC(d, knownMap) {
+    if (d.spn === SPN_TRAME_VIDE) return null; // trame DM1 vide → ignorée
+
+    const fix = J1939_CONCAT_FIX[d.spn];
+    if (fix) {
+      // On garde la valeur brute pour traçabilité (affichée en infobulle).
+      return { ...d, spn: fix.spn, fmi: fix.fmi, libelle: fix.libelle, raw_spn: d.spn };
+    }
+
+    if (!isLibelleManquant(d.libelle)) return { ...d };
+
+    const heal = knownMap.get(`${d.spn}/${d.fmi}`) || knownMap.get(`${d.spn}`);
+    return { ...d, libelle: heal || J1939_STD_LABELS[d.spn] || `SPN non documenté (${d.spn})` };
   }
 
   // --- CHARGEMENT DYNAMIQUE DES CODES DEFAUTS DM1 ---
@@ -3104,45 +3172,112 @@
       if (!response.ok) throw new Error("Erreur de récupération des DTC");
       const data = await response.json();
 
-      tbody.innerHTML = ""; // On vide le tableau statique/précédent
+      const dtcs = Array.isArray(data.dtcs) ? data.dtcs : [];
 
-      if (!data.dtcs || data.dtcs.length === 0) {
+      if (dtcs.length === 0) {
+        dtcRows = [];
+        dtcPage = 0;
         tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--jt-text-soft);">Aucun défaut enregistré sur cet engin.</td></tr>`;
         updateDM1Header([]);
+        renderDTCPagination();
         return;
       }
 
-      data.dtcs.forEach(dtc => {
-        const tr = document.createElement('tr');
-
-        // Détermination du style de la lampe et du statut selon l'état
-        const isActif = dtc.status.toLowerCase() === 'actif';
-        const statusClass = isActif ? 'dm1-active' : 'dm1-resolved';
-        const lampClass = isActif ? 'lamp-red' : 'lamp-off';
-
-        tr.innerHTML = `
-          <td class="dm1-date">${dtc.date_str}</td>
-          <td class="dm1-code">${dtc.spn} / ${dtc.fmi}</td>
-          <td><span class="dm1-lamp ${lampClass}"><span class="lamp-icon"></span>${isActif ? 'Rouge' : 'Off'}</span></td>
-          <td>${dtc.libelle}</td>
-          <td class="${statusClass}">${dtc.status}</td>
-          <td class="mono">${dtc.occurrence_count}</td>
-        `;
-        tbody.appendChild(tr);
+      // 1) Index des libellés connus, par SPN/FMI puis par SPN (auto-réparation).
+      const knownMap = new Map();
+      dtcs.forEach(d => {
+        if (!isLibelleManquant(d.libelle)) {
+          knownMap.set(`${d.spn}/${d.fmi}`, d.libelle);
+          if (!knownMap.has(`${d.spn}`)) knownMap.set(`${d.spn}`, d.libelle);
+        }
       });
 
-      // Mise à jour de l'en-tête du panneau (compteurs + date de dernière mise à jour)
-      updateDM1Header(data.dtcs);
+      // 2) Décodage + enrichissement (trames vides écartées) + tri (récents d'abord).
+      dtcRows = dtcs
+        .map(d => normalizeDTC(d, knownMap))
+        .filter(Boolean)
+        .sort((a, b) => (b.last_ts || b.ts || 0) - (a.last_ts || a.ts || 0));
+      dtcPage = 0;
 
-      // Mettre à jour le badge rouge de la sidebar avec le nombre de défauts actifs
-      const actifsCount = data.dtcs.filter(d => d.status.toLowerCase() === 'actif').length;
+      if (dtcRows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--jt-text-soft);">Aucun défaut actif (trames DM1 vides uniquement).</td></tr>`;
+        updateDM1Header([]);
+        renderDTCPagination();
+        return;
+      }
+
+      renderDTCPage();
+      updateDM1Header(dtcRows);
+
+      // Badge rouge de la sidebar = nombre de défauts actifs.
+      const actifsCount = dtcRows.filter(d => (d.status || '').toLowerCase() === 'actif').length;
       const badge = document.querySelector('.sidebar-item[data-view="dm1"] .si-badge');
       if (badge) badge.textContent = actifsCount;
 
     } catch (error) {
       console.warn(`Impossible de charger les DTC pour ${deviceId}:`, error);
+      dtcRows = [];
+      dtcPage = 0;
       tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--critical);">Erreur lors du chargement des défauts.</td></tr>`;
+      renderDTCPagination();
     }
+  }
+
+  // --- RENDU D'UNE PAGE DE DÉFAUTS ---
+  function renderDTCPage() {
+    const tbody = document.getElementById('dtc-table-body');
+    if (!tbody) return;
+
+    const totalPages = Math.max(1, Math.ceil(dtcRows.length / DTC_PAGE_SIZE));
+    dtcPage = Math.min(Math.max(0, dtcPage), totalPages - 1);
+
+    const start = dtcPage * DTC_PAGE_SIZE;
+    const pageRows = dtcRows.slice(start, start + DTC_PAGE_SIZE);
+
+    tbody.innerHTML = "";
+    pageRows.forEach(dtc => {
+      const tr = document.createElement('tr');
+      const isActif = (dtc.status || '').toLowerCase() === 'actif';
+      const statusClass = isActif ? 'dm1-active' : 'dm1-resolved';
+      const lampClass = isActif ? 'lamp-red' : 'lamp-off';
+
+      const codeTitle = dtc.raw_spn ? ` title="Valeur brute concaténée : ${dtc.raw_spn} (= SPN×32+FMI)"` : '';
+      tr.innerHTML = `
+        <td class="dm1-date">${dtc.date_str}</td>
+        <td class="dm1-code"${codeTitle}>${dtc.spn} / ${dtc.fmi}</td>
+        <td><span class="dm1-lamp ${lampClass}"><span class="lamp-icon"></span>${isActif ? 'Rouge' : 'Off'}</span></td>
+        <td>${dtc.libelle}</td>
+        <td class="${statusClass}">${dtc.status}</td>
+        <td class="mono">${dtc.occurrence_count}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    renderDTCPagination();
+  }
+
+  // --- CONTRÔLES DE PAGINATION ---
+  function renderDTCPagination() {
+    const footer = document.getElementById('dm1-pagination');
+    if (!footer) return;
+
+    const total = dtcRows.length;
+    if (total <= DTC_PAGE_SIZE) { footer.innerHTML = ""; return; }
+
+    const totalPages = Math.ceil(total / DTC_PAGE_SIZE);
+    const start = dtcPage * DTC_PAGE_SIZE;
+    const end = Math.min(start + DTC_PAGE_SIZE, total);
+
+    footer.innerHTML = `
+      <span class="dm1-pg-info">${start + 1}–${end} sur ${total}</span>
+      <button class="btn" id="dm1-pg-prev" ${dtcPage === 0 ? 'disabled' : ''}>← Précédent</button>
+      <span class="dm1-pg-page">Page ${dtcPage + 1} / ${totalPages}</span>
+      <button class="btn" id="dm1-pg-next" ${dtcPage >= totalPages - 1 ? 'disabled' : ''}>Suivant →</button>
+    `;
+    const prev = document.getElementById('dm1-pg-prev');
+    const next = document.getElementById('dm1-pg-next');
+    if (prev) prev.onclick = () => { dtcPage--; renderDTCPage(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+    if (next) next.onclick = () => { dtcPage++; renderDTCPage(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   }
 
   // --- GESTION PARC LOGIQUE FLOTTE ---
