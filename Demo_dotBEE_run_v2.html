@@ -314,7 +314,7 @@ body{margin:0;font-family:'Open Sans',sans-serif;background:var(--paper);color:v
 <script>
 /* =================== CONFIG RUN — À RENSEIGNER =====================
    Passez MOCK à false une fois les trois URL renseignées.            */
-const BUILD = 'v-hbmask+dbg';   // marqueur de version — visible dans le bandeau et la console
+const BUILD = 'v-ssidwait+dbg';   // marqueur de version — visible dans le bandeau et la console
 const _p = new URLSearchParams(location.search);
 const CFG_RUN = {
   MOCK: false,                // true = données simulées embarquées (pour voir tourner la page). false = banc réel.
@@ -355,7 +355,7 @@ let st={mode:'idleoff',connected:false,connecting:false,engineOn:false,activeWif
  dispBacklog:0,_lastBacklogRaw:null,backlogAnchor:0,backlogAnchorTs:0,  // backlog : valeur affichée + ancre réelle (valeur, instant)
  ssid:null,                         // SSID confirmé par la télémétrie (source de vérité)
  lastHbTs:0,lastOnline:null,        // dernier heartbeat appliqué (horodatage) + dernier état en ligne connu
- awaitHb:false,awaitBaseline:0,awaitUntil:0,  // après une commande WiFi : on masque l'ancien SSID jusqu'au prochain heartbeat
+ awaitActive:false,awaitMode:null,awaitSsid:null,awaitUntil:0,  // après une commande WiFi : masque jusqu'à atteindre le bon SSID cible
  manShown:false,manImg:'static',manX:MAN_STOP, womanShown:false,womanImg:'lstatic',womanX:WOMAN_STOP};
 
 const fmt=n=>Math.round(n).toLocaleString('fr-FR').replace(/\u00a0/g,' ');
@@ -537,16 +537,20 @@ async function poll(){
     const tm=new Date().toLocaleTimeString('fr-FR');
     console.log('[dotBEE '+BUILD+'] hb=',hb,'lastHb=',st.lastHbTs,'fresh=',fresh,
                 '| raw.current_ssid=', raw.current_ssid, '| mqtt_connected=', raw.mqtt_connected,
-                '| norm.ssid=', nrm&&nrm.ssid, 'online=', online, '| st.ssid=', st.ssid);
-    // Masque après commande WiFi : tant qu'aucun heartbeat PLUS RÉCENT que la baseline
-    // n'est arrivé, on n'affiche pas l'ancien SSID -> "connexion en cours…".
-    if(st.awaitHb){
-      if(hb>st.awaitBaseline || Date.now()>=st.awaitUntil){
-        st.awaitHb=false;                         // nouveau heartbeat post-commande (ou délai) -> on révèle la réalité
+                '| norm.ssid=', nrm&&nrm.ssid, 'online=', online,
+                '| await=', st.awaitActive, st.awaitMode, st.awaitSsid, '| st.ssid=', st.ssid);
+    // Masque après commande WiFi : on attend le BON SSID (pas juste un heartbeat plus
+    // récent), car à la reconnexion le device peut émettre des heartbeats transitoires
+    // portant encore l'ancien SSID. On ignore ceux-là jusqu'à atteindre la cible.
+    if(st.awaitActive){
+      const done = st.awaitMode==='to' ? (online && nrm.ssid===st.awaitSsid)   // WiFi X ON  -> attendre wifiX exactement
+                                       : (!online || nrm.ssid!==st.awaitSsid);  // WiFi X OFF -> attendre de quitter wifiX
+      if(done || Date.now()>=st.awaitUntil){
+        st.awaitActive=false;                     // cible atteinte (ou délai) -> on révèle la réalité
       } else {
         showConnectingMask();
-        status('Connexion en cours… (attente heartbeat) · '+tm);
-        return;                                   // on saute la mise à jour tant que rien de neuf
+        status('Connexion en cours… (attente '+st.awaitSsid+') · '+tm);
+        return;                                   // on masque l'ancien SSID tant que la cible n'est pas atteinte
       }
     }
     if(fresh){
@@ -576,10 +580,13 @@ async function bench(cmd){
    manual() = marque le bouton, arme l'attente d'un nouveau heartbeat (WiFi), envoie. */
 function manual(cmd){
   markManual(cmd);
-  // Commande WiFi (1/2) : on masque l'ancien SSID jusqu'à l'arrivée d'un heartbeat
-  // PLUS RÉCENT que celui qu'on avait à l'instant de la commande. Pas de prédiction.
-  if(!CFG_RUN.MOCK && (cmd[0]==='1' || cmd[0]==='2')){
-    st.awaitHb=true; st.awaitBaseline=st.lastHbTs; st.awaitUntil=Date.now()+30000;
+  // Commande WiFi (1/2) : on masque l'ancien SSID jusqu'à atteindre la cible réelle.
+  //  - X ON  -> on attend que la télémétrie montre exactement wifiX ;
+  //  - X OFF -> on attend qu'elle quitte wifiX (autre WiFi ou hors réseau).
+  const ch=cmd[0], on=cmd.endsWith('on');
+  if(!CFG_RUN.MOCK && (ch==='1' || ch==='2')){
+    st.awaitActive=true; st.awaitMode= on?'to':'from';
+    st.awaitSsid = ch==='1'?SSID1:SSID2; st.awaitUntil=Date.now()+30000;
     showConnectingMask();                         // retour visuel immédiat, sans attendre le prochain poll
   }
   bench(cmd);
