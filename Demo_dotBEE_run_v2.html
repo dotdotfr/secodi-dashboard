@@ -27,6 +27,13 @@ body{margin:0;font-family:'Open Sans',sans-serif;background:var(--paper);color:v
 .step-btn.done{border-left-color:var(--green);}
 .step-btn.done .num{color:var(--green);}
 .step-btn.playing{border-left-color:var(--blue);box-shadow:0 0 0 1px var(--blue) inset;}
+.step-btn.fake{cursor:default;pointer-events:none;opacity:.4;filter:grayscale(1);border-left-color:var(--line);box-shadow:none;}
+.step-btn.fake:hover{background:#fff;}
+.mstat{width:13px;height:13px;display:inline-block;}
+.mstat.spin{border:2px solid #CFCFCF;border-top-color:var(--amber);border-radius:50%;animation:mspin .7s linear infinite;}
+.mstat.ok{color:var(--green);font-weight:700;font-size:13px;line-height:13px;}
+.mstat.err{color:var(--red);font-weight:700;font-size:13px;line-height:13px;}
+@keyframes mspin{to{transform:rotate(360deg);}}
 .step-btn .play{margin-left:auto;font-size:11px;color:var(--amber);font-weight:700;}
 .step-btn.done .play{color:var(--green);}
 .scenario .actions{display:flex;flex-direction:column;gap:6px;margin-top:4px;}
@@ -165,13 +172,13 @@ body{margin:0;font-family:'Open Sans',sans-serif;background:var(--paper);color:v
 <div class="demo-body">
   <aside class="scenario">
     <div class="eyebrow">Scénario — 3 étapes</div>
-    <button class="step-btn" data-step="1" onclick="sendStep(1)">
+    <button class="step-btn fake" data-step="1" disabled aria-disabled="true" tabindex="-1">
       <span class="num">1</span><span class="txt"><b>Au dépôt — moteur arrêté</b><small>Active #dotdot_wifi1 (et coupe wifi2). Le #dot-BEE s'associe.</small></span><span class="play">&#9654;</span>
     </button>
-    <button class="step-btn" data-step="2" onclick="sendStep(2)">
+    <button class="step-btn fake" data-step="2" disabled aria-disabled="true" tabindex="-1">
       <span class="num">2</span><span class="txt"><b>Départ au champ</b><small>Coupe #dotdot_wifi1. Le #dot-BEE passe hors réseau et bufférise sur SD.</small></span><span class="play">&#9654;</span>
     </button>
-    <button class="step-btn" data-step="3" onclick="sendStep(3)">
+    <button class="step-btn fake" data-step="3" disabled aria-disabled="true" tabindex="-1">
       <span class="num">3</span><span class="txt"><b>Retour à portée + rattrapage</b><small>Active #dotdot_wifi2. Reconnexion + déstockage (flush express).</small></span><span class="play">&#9654;</span>
     </button>
     <div class="actions">
@@ -181,7 +188,7 @@ body{margin:0;font-family:'Open Sans',sans-serif;background:var(--paper);color:v
         <button onclick="resetBench()">&#9209; Reset banc</button>
       </div>
     </div>
-    <div class="eyebrow" style="margin-top:14px">Contrôle manuel</div>
+    <div class="eyebrow" style="margin-top:14px;display:flex;align-items:center;gap:6px">Contrôle manuel <span id="manual-status" class="mstat"></span></div>
     <div class="manual-grid">
       <span class="manual-label">WiFi 1</span>
       <button id="mbtn-1on"  onclick="manual('1on')"  title="Allumer routeur WiFi 1">ON</button>
@@ -315,7 +322,7 @@ body{margin:0;font-family:'Open Sans',sans-serif;background:var(--paper);color:v
 <script>
 /* =================== CONFIG RUN — À RENSEIGNER =====================
    Passez MOCK à false une fois les trois URL renseignées.            */
-const BUILD = 'v-onoff';   // marqueur de version — visible dans le bandeau et la console
+const BUILD = 'v-ui1';   // marqueur de version — visible dans le bandeau et la console
 const _p = new URLSearchParams(location.search);
 const CFG_RUN = {
   MOCK: false,                // true = données simulées embarquées (pour voir tourner la page). false = banc réel.
@@ -357,6 +364,7 @@ let st={mode:'idleoff',connected:false,connecting:false,engineOn:false,activeWif
  ssid:null,                         // SSID confirmé par la télémétrie (source de vérité)
  lastHbTs:0,lastOnline:null,        // dernier heartbeat appliqué (horodatage) + dernier état en ligne connu
  awaitActive:false,awaitMode:null,awaitSsid:null,awaitBaseline:0,awaitUntil:0,  // après commande WiFi : masque jusqu'à un heartbeat GENUINEMENT nouveau (last_seen_ts avancé)
+ cmdPending:false,lastCmdOk:null,   // indicateur roue/coche à côté de « Contrôle manuel »
  manShown:false,manImg:'static',manX:MAN_STOP, womanShown:false,womanImg:'lstatic',womanX:WOMAN_STOP};
 
 const fmt=n=>Math.round(n).toLocaleString('fr-FR').replace(/\u00a0/g,' ');
@@ -370,7 +378,7 @@ function boxState(){
   if(st.engineOn) return 'streaming';
   return 'idle';
 }
-const SLB={streaming:'streaming temps réel',idle:'connecté · moteur arrêté',connecting:'connexion en cours…',offline:'hors réseau',storage:'stockage local',idleoff:'moteur arrêté',catchup:'déstockage en cours'};
+const SLB={streaming:'streaming temps réel',idle:'connecté · moteur arrêté',connecting:'en attente…',offline:'hors réseau',storage:'stockage local',idleoff:'moteur arrêté',catchup:'déstockage en cours'};
 
 function render(){
   const s=boxState();
@@ -556,9 +564,9 @@ async function poll(){
       const advanced   = hb > st.awaitBaseline;                 // vrai nouveau heartbeat (bascule vers un WiFi)
       const wentOffline= st.awaitMode==='from' && online===false; // OFF : device passé hors réseau (aucun heartbeat à attendre)
       if(advanced || wentOffline || Date.now()>=st.awaitUntil){
-        st.awaitActive=false;                     // heartbeat frais, hors réseau, ou filet 120s -> on révèle la réalité
+        st.awaitActive=false; updateManualStatus();  // résolu -> coche verte
       } else {
-        showConnectingMask();
+        showConnectingMask(); updateManualStatus();  // en attente -> roue qui tourne
         status(maskLabel()+' · '+tm);
         return;                                   // on masque l'ancien état tant que rien de confirmé
       }
@@ -577,14 +585,26 @@ async function poll(){
   }finally{ polling=false; }
 }
 
+/* ---- indicateur roue/coche (Contrôle manuel) ---- */
+function updateManualStatus(){
+  const el=document.getElementById('manual-status'); if(!el) return;
+  if(st.cmdPending || st.awaitActive){ el.className='mstat spin'; el.textContent=''; el.title='commande en cours…'; }
+  else if(st.lastCmdOk===true){ el.className='mstat ok'; el.textContent='✓'; el.title='ordre passé'; }
+  else if(st.lastCmdOk===false){ el.className='mstat err'; el.textContent='✕'; el.title='échec de la commande'; }
+  else { el.className='mstat'; el.textContent=''; el.title=''; }
+}
+
 /* ---- commandes banc ---- */
 async function bench(cmd){
   if(CFG_RUN.MOCK) return true;
   if(!CFG_RUN.BENCH_URL){ status('BENCH_URL non renseigné — commande « '+cmd+' » non envoyée.'); return false; }
+  st.cmdPending=true; updateManualStatus();       // roue qui tourne pendant l'envoi
   try{
     const r=await fetch(CFG_RUN.BENCH_URL+'?cmd='+encodeURIComponent(cmd)+'&token='+encodeURIComponent(CFG_RUN.BENCH_TOKEN)+'&_='+Date.now());
-    if(!r.ok) throw new Error('HTTP '+r.status); return true;
-  }catch(e){ status('Échec commande « '+cmd+' » : '+e.message); return false; }
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    st.lastCmdOk=true; return true;
+  }catch(e){ st.lastCmdOk=false; status('Échec commande « '+cmd+' » : '+e.message); return false; }
+  finally{ st.cmdPending=false; updateManualStatus(); }   // coche verte (ou croix) une fois l'ordre passé
 }
 /* ---- boutons de contrôle manuel ----
    manual() = marque le bouton, arme l'attente d'un nouveau heartbeat (WiFi), envoie. */
