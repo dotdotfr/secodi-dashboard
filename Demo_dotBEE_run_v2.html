@@ -352,8 +352,8 @@ let st={mode:'idleoff',connected:false,connecting:false,engineOn:false,activeWif
  counterFrozen:false,frozenBacklog:0,sdFull:false,intraday:0,inWork:false,
  dispCloud:0,dispSd:0,_led:'#2E7D32',   // valeurs lissées + couleur courante pour la boucle d'animation
  dispBacklog:0,_lastBacklogRaw:null,backlogAnchor:0,backlogAnchorTs:0,  // backlog : valeur affichée + ancre réelle (valeur, instant)
- ssid:null,r1on:false,r2on:false,   // SSID courant + état ON/OFF connu des deux routeurs (éteints au démarrage)
- pendingSsid:null,pendingUntil:0,pendingActive:false,  // cible WiFi optimiste (SSID visé, ou null = coupure)
+ ssid:null,                         // SSID confirmé par la télémétrie (source de vérité)
+ txnActive:false,txnFrom:null,txnTarget:null,txnUntil:0,  // transition WiFi en cours (état quitté, cible éventuelle, délai)
  manShown:false,manImg:'static',manX:MAN_STOP, womanShown:false,womanImg:'lstatic',womanX:WOMAN_STOP};
 
 const fmt=n=>Math.round(n).toLocaleString('fr-FR').replace(/\u00a0/g,' ');
@@ -491,30 +491,30 @@ function nowFrac(){ const d=new Date(); return (d.getHours()*3600+d.getMinutes()
 function applyTelemetry(t){
   st.intraday=nowFrac();
   if(t && t.days!=null) st.days=t.days;
-  // Affichage optimiste : dès qu'une bascule/coupure WiFi est commandée, on montre
-  // directement la cible sans flasher l'ancien SSID, jusqu'à confirmation télémétrie
-  // (ou expiration à 30s). Cible = SSID visé, ou null = coupure attendue.
-  if(st.pendingActive){
-    const online = t && t.online!==false;
-    const confirmed = st.pendingSsid===null ? !online : (online && t.ssid===st.pendingSsid);
-    if(confirmed || Date.now() >= st.pendingUntil){
-      st.pendingActive=false;                     // cible atteinte ou délai dépassé -> flux normal
-    } else if(st.pendingSsid===null){
-      // coupure attendue : on affiche hors réseau tout de suite
-      st.connected=false; st.connecting=false; st.activeWifi=null; st.cloud=0; st.ssid=null;
-      st.ssidLabel='hors réseau'; st.ssidClass='disconnected';
-      st.manShown=false; st.womanShown=false;
-      render(); return;
+  // Transition WiFi : une commande vient de changer l'état. On masque l'ancien SSID
+  // par un affichage neutre "en cours…" et on RÉSOUT dès que la télémétrie ne montre
+  // plus l'état d'avant (txnFrom) — sans deviner la cible. Timeout de secours à 30s.
+  if(st.txnActive){
+    const telState = (!t || t.online===false) ? null : (t.ssid||null);  // état montré par la télémétrie
+    const resolved = telState !== st.txnFrom;                            // la télémétrie a bougé
+    if(resolved || Date.now() >= st.txnUntil){
+      st.txnActive=false;                          // résolu (ou délai) -> on rend la main au flux normal
     } else {
-      // bascule attendue : on affiche la connexion en cours vers la cible
       st.connected=true; st.connecting=true; st.counterFrozen=false;
-      st.ssidLabel='connexion à '+st.pendingSsid+'…'; st.ssidClass='searching';
-      st.activeWifi = st.pendingSsid===SSID2?'woman':(st.pendingSsid===SSID1?'man':null);
-      if(t){ st.engineOn=!!t.engine_on; st.cloud=t.cloud_rate||0; st.sdRate=t.sd_rate||0;
+      if(st.txnTarget){                            // cible fiable (connexion depuis hors réseau)
+        st.ssidLabel='connexion à '+st.txnTarget+'…';
+        st.activeWifi = st.txnTarget===SSID2?'woman':'man';
+      } else {                                     // bascule/coupure : cible incertaine -> neutre
+        st.ssidLabel='commutation WiFi…'; st.activeWifi=null;
+      }
+      st.ssidClass='searching';
+      if(t && t.online!==false){ st.engineOn=!!t.engine_on; st.cloud=t.cloud_rate||0; st.sdRate=t.sd_rate||0;
              if(t.sd_percent!=null) st.sdPercent=t.sd_percent;
              if(t.backlog!=null){ anchorBacklog(t.backlog); st.backlog=t.backlog; } }
+      else { st.cloud=0; }
       if(st.activeWifi==='man'){ st.manShown=true; st.manImg='static'; st.manX=MAN_STOP; st.womanShown=false; }
-      else { st.womanShown=true; st.womanImg='lstatic'; st.womanX=WOMAN_STOP; st.manShown=false; }
+      else if(st.activeWifi==='woman'){ st.womanShown=true; st.womanImg='lstatic'; st.womanX=WOMAN_STOP; st.manShown=false; }
+      else { st.manShown=false; st.womanShown=false; }
       render(); return;
     }
   }
@@ -531,7 +531,6 @@ function applyTelemetry(t){
   }
   st.connected=true; st.connecting=false; st.counterFrozen=false;
   st.ssid=t.ssid||null;
-  if(t.ssid===SSID1) st.r1on=true; else if(t.ssid===SSID2) st.r2on=true;  // le routeur connecté est forcément allumé
   st.ssidLabel=t.ssid||'connecté'; st.ssidClass='';
   st.activeWifi = t.ssid===SSID2?'woman':(t.ssid===SSID1?'man':null);
   st.engineOn=!!t.engine_on;
@@ -575,7 +574,7 @@ async function bench(cmd){
 /* ---- boutons de contrôle manuel ----
    manual() = marque le bouton pressé (vert/texte blanc, l'opposé s'éteint),
    pose la cible WiFi optimiste, puis envoie la commande au banc. */
-function manual(cmd){ markManual(cmd); expectWifi(cmd); bench(cmd); }
+function manual(cmd){ markManual(cmd); if(!CFG_RUN.MOCK) expectWifi(cmd); bench(cmd); }
 
 // Le bouton pressé passe actif et reste vert jusqu'à ce qu'on presse son opposé.
 function markManual(cmd){
@@ -584,25 +583,22 @@ function markManual(cmd){
   document.getElementById('mbtn-'+ch+'off').classList.toggle('active', !on);
 }
 
-// Modèle matériel : le #dot-BEE reste sur son WiFi tant qu'on ne coupe pas celui-ci.
-//  - allumer un routeur ne bascule QUE si on était hors réseau ;
-//  - couper le routeur actif bascule vers l'autre s'il est allumé, sinon coupure.
-// On en déduit la cible et on l'affiche tout de suite (connexion en cours / coupure),
-// sans repasser par l'ancien SSID le temps que la télémétrie confirme.
+// Décide si la commande CHANGE l'état, en ne se fiant qu'au SSID confirmé (télémétrie) :
+//  - allumer un routeur ne change quelque chose QUE si on est hors réseau (curCh===null) ;
+//  - couper un routeur ne change quelque chose QUE si c'est le routeur actif (curCh===ch).
+// Un « couper l'actif » change toujours le SSID (vers l'autre ou hors réseau), d'où la
+// transition. On n'a PAS besoin de connaître l'état de l'autre routeur pour décider ça.
 function expectWifi(cmd){
   const ch=cmd[0], on=cmd.endsWith('on');
-  if(ch==='1') st.r1on=on; else if(ch==='2') st.r2on=on; else return;  // calculateur : pas de WiFi
-  const cur   = st.pendingActive ? st.pendingSsid : (st.ssid||null);
+  if(ch!=='1' && ch!=='2') return;                     // calculateur : pas de WiFi
+  const cur   = st.ssid || null;                       // état confirmé (source de vérité)
   const curCh = cur===SSID1?'1':(cur===SSID2?'2':null);
-  let target = cur;                                    // défaut : aucun changement
-  if(on){
-    if(curCh===null) target = (ch==='1')?SSID1:SSID2;  // hors réseau -> se connecte au routeur allumé
-  } else if(curCh===ch){
-    target = (ch==='1') ? (st.r2on?SSID2:null)         // on coupe l'actif -> l'autre s'il est allumé,
-                        : (st.r1on?SSID1:null);        // sinon hors réseau
-  }
-  if(target===cur) return;                             // pas de changement attendu -> pas d'override
-  st.pendingSsid=target; st.pendingActive=true; st.pendingUntil=Date.now()+30000;
+  const changes = on ? (curCh===null) : (curCh===ch);
+  if(!changes) return;                                 // no-op matériel -> aucune transition affichée
+  st.txnFrom   = cur;                                  // état qu'on quitte (à voir disparaître de la télémétrie)
+  st.txnTarget = on ? (ch==='1'?SSID1:SSID2) : null;   // cible fiable seulement en connexion depuis hors réseau
+  st.txnActive = true;
+  st.txnUntil  = Date.now()+30000;
 }
 
 async function sendStep(i){
