@@ -327,7 +327,7 @@ body{margin:0;font-family:'Open Sans',sans-serif;background:var(--paper);color:v
 <script>
 /* =================== CONFIG RUN — À RENSEIGNER =====================
    Passez MOCK à false une fois les trois URL renseignées.            */
-const BUILD = 'v-1hb';   // marqueur de version — visible dans le bandeau et la console
+const BUILD = 'v-availssid';   // marqueur de version — visible dans le bandeau et la console
 const _p = new URLSearchParams(location.search);
 const CFG_RUN = {
   MOCK: false,                // true = données simulées embarquées (pour voir tourner la page). false = banc réel.
@@ -368,8 +368,8 @@ let st={mode:'idleoff',connected:false,connecting:false,engineOn:false,activeWif
  dispBacklog:0,_lastBacklogRaw:null,backlogAnchor:0,backlogAnchorTs:0,  // backlog : valeur affichée + ancre réelle (valeur, instant)
  ssid:null,                         // SSID confirmé par la télémétrie (source de vérité)
  lastHbTs:0,lastOnline:null,        // dernier heartbeat appliqué (horodatage) + dernier état en ligne connu
- awaitActive:false,awaitMode:null,awaitSsid:null,awaitUntil:0,  // après commande WiFi : masque jusqu'à validation
- awaitLastHb:0,awaitCandidate:null,awaitConfirms:0,  // validation : 2 confirmations concordantes requises
+ awaitActive:false,awaitMode:null,awaitSsid:null,awaitUntil:0,  // masque optimiste après commande WiFi
+ preOnline:null,preSsid:null,lastSig:null,  // état d'avant la commande + signature du dernier état appliqué
  cmdPending:false,lastCmdOk:null,   // indicateur roue/coche à côté de « Contrôle manuel »
  totalFramesCloud:0,                // total cumulé de trames envoyées au cloud (depuis 01/07/2026, fourni par le backend)
  manShown:false,manImg:'static',manX:MAN_STOP, womanShown:false,womanImg:'lstatic',womanX:WOMAN_STOP};
@@ -560,8 +560,8 @@ async function poll(){
     const nrm=normalizeTelemetry(raw);
     const hb=Number(raw.last_seen_ts)||0;         // horodatage du dernier heartbeat enregistré
     const online=!!(nrm&&nrm.online);
+    const ssid = online ? (nrm.ssid||null) : null;
     if(raw.total_frames_cloud!=null){ st.totalFramesCloud=Number(raw.total_frames_cloud)||0; renderCloudTotal(); }
-    const fresh = hb>st.lastHbTs || online!==st.lastOnline;   // vraie nouveauté : nouveau heartbeat OU bascule en ligne/hors ligne
     const tm=new Date().toLocaleTimeString('fr-FR');
     // Bandeau debug : ce qui est REÇU (brut backend) vs ce qui est AFFICHÉ, sans filtrage.
     const dbg=document.getElementById('dbg-overlay');
@@ -571,40 +571,29 @@ async function poll(){
       'ÉTAT  st.ssid='+st.ssid+'  label='+st.ssidLabel+'\n'+
       'MASK  await='+st.awaitActive+' '+(st.awaitMode||'')+' '+(st.awaitSsid||'')+'\n'+
       'poll '+tm;
-    console.log('[dotBEE '+BUILD+'] hb=',hb,'lastHb=',st.lastHbTs,'fresh=',fresh,
-                '| raw.current_ssid=', raw.current_ssid, '| mqtt_connected=', raw.mqtt_connected,
-                '| norm.ssid=', nrm&&nrm.ssid, 'online=', online,
-                '| await=', st.awaitActive, st.awaitMode, st.awaitSsid, '| st.ssid=', st.ssid);
-    // Masque après commande WiFi. On ne valide qu'après DEUX confirmations concordantes
-    // (un seul heartbeat frais peut être transitoire à la reconnexion) :
-    //  - ON  : deux heartbeats NEUFS successifs rapportant le même SSID en ligne ;
-    //  - OFF : deux relevés successifs hors réseau (pas de heartbeat quand déconnecté),
-    //          ou deux heartbeats concordants s'il bascule vers l'autre WiFi.
+    // Masque optimiste : le backend confirme le SSID immédiatement (message availability),
+    // donc on masque juste le court instant entre le clic et la propagation, puis on
+    // révèle dès que l'état (online, ssid) DIFFÈRE de celui d'avant la commande.
     if(st.awaitActive){
-      let countable=false, sig=null;
-      if(online){ sig = nrm.ssid||''; countable = hb > st.awaitLastHb; }        // observation = nouveau heartbeat
-      else if(st.awaitMode==='from'){ sig='__off__'; countable=true; }          // OFF : coupure validée par relevés
-      // (ON + hors réseau transitoire = non comptable -> on continue de masquer)
-      if(countable){
-        if(hb>st.awaitLastHb) st.awaitLastHb=hb;
-        if(sig===st.awaitCandidate){ st.awaitConfirms++; }
-        else { st.awaitCandidate=sig; st.awaitConfirms=1; }
-      }
-      if(st.awaitConfirms>=1 || Date.now()>=st.awaitUntil){
-        st.awaitActive=false; updateManualStatus();  // 1 confirmation fraîche (ou filet 120s) -> coche verte
+      const changed = (online!==st.preOnline) || (ssid!==st.preSsid);
+      if(changed || Date.now()>=st.awaitUntil){
+        st.awaitActive=false; updateManualStatus();  // état confirmé changé (ou filet 30s) -> coche verte
       } else {
-        showConnectingMask(); updateManualStatus();  // en attente -> roue qui tourne
+        showConnectingMask(); updateManualStatus();  // roue qui tourne
         status(maskLabel()+' · '+tm);
-        return;                                   // on masque l'ancien état tant que non validé
+        return;
       }
     }
-    if(fresh){
-      if(hb>st.lastHbTs) st.lastHbTs=hb;
-      st.lastOnline=online;
-      applyTelemetry(nrm);                        // on ne met à jour QUE sur un nouveau heartbeat
-      status('Télémétrie · nouveau heartbeat · '+tm);
+    // On applique dès qu'une valeur significative change : SSID, état en ligne, ou
+    // nouveau heartbeat (métriques). last_seen_ts ne bouge pas sur l'availability,
+    // c'est pourquoi on inclut aussi ssid/online dans la signature.
+    const sig = online+'|'+(ssid||'')+'|'+hb;
+    if(sig!==st.lastSig){
+      st.lastSig=sig; st.lastOnline=online; if(hb>st.lastHbTs) st.lastHbTs=hb;
+      applyTelemetry(nrm);
+      status('Télémétrie · '+tm);
     } else {
-      status('Télémétrie · en attente d’un nouveau heartbeat · '+tm);
+      status('Télémétrie · inchangé · '+tm);
     }
   }catch(e){
     applyTelemetry(null);
@@ -642,12 +631,15 @@ function manual(cmd){
   //  - X OFF -> on attend qu'elle quitte wifiX (autre WiFi ou hors réseau).
   const ch=cmd[0], on=cmd.endsWith('on');
   if(!CFG_RUN.MOCK && (ch==='1' || ch==='2')){
-    st.awaitActive=true; st.awaitMode= on?'to':'from';
-    st.awaitSsid = ch==='1'?SSID1:SSID2;
-    st.awaitLastHb = st.lastHbTs;                 // point de départ : on ne comptera que les heartbeats postérieurs
-    st.awaitCandidate=null; st.awaitConfirms=0;   // reset des confirmations (2 requises)
-    st.awaitUntil=Date.now()+120000;              // filet de sécurité large (la reconnexion peut prendre >40s)
-    showConnectingMask();                         // retour visuel immédiat (connexion à X… ou déconnexion…)
+    const wifi = ch==='1'?SSID1:SSID2;
+    // Change l'état seulement si : ON alors qu'on est hors réseau, ou OFF du WiFi actif.
+    const willChange = on ? (st.ssid===null) : (st.ssid===wifi);
+    if(willChange){
+      st.preOnline = st.lastOnline; st.preSsid = st.ssid;   // état d'avant : on masque jusqu'à ce qu'il change
+      st.awaitActive=true; st.awaitMode= on?'to':'from'; st.awaitSsid=wifi;
+      st.awaitUntil=Date.now()+30000;             // filet court : le backend confirme le SSID quasi immédiatement
+      showConnectingMask();                       // retour visuel immédiat (connexion à X… ou déconnexion…)
+    }
   }
   bench(cmd);
 }
