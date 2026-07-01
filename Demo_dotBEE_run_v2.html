@@ -40,8 +40,10 @@ body{margin:0;font-family:'Open Sans',sans-serif;background:var(--paper);color:v
 .scenario .cfg-note{font-size:9px;color:var(--muted);line-height:1.4;margin-top:auto;}
 .manual-grid{display:grid;grid-template-columns:auto 1fr 1fr;gap:4px 6px;align-items:center;}
 .manual-label{font-size:10px;color:var(--muted);white-space:nowrap;}
-.manual-grid button{font-family:'Open Sans',sans-serif;font-size:10px;font-weight:700;padding:4px 0;border:1px solid var(--line);background:#fff;cursor:pointer;letter-spacing:.5px;}
+.manual-grid button{font-family:'Open Sans',sans-serif;font-size:10px;font-weight:700;padding:4px 0;border:1px solid var(--line);background:#fff;color:var(--ink);cursor:pointer;letter-spacing:.5px;transition:.15s;}
 .manual-grid button:hover{background:#F0EFED;}
+.manual-grid button.active{background:var(--green);color:#fff;border-color:var(--green);}
+.manual-grid button.active:hover{background:var(--green);}
 .stage{background:#fff;padding:12px 18px;display:flex;flex-direction:column;gap:10px;overflow:hidden;}
 .fiche-top{display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--line);padding-bottom:8px;}
 .fiche-top .badge{width:46px;height:34px;background:var(--brand);border-radius:3px;flex-shrink:0;}
@@ -181,14 +183,14 @@ body{margin:0;font-family:'Open Sans',sans-serif;background:var(--paper);color:v
     <div class="eyebrow" style="margin-top:14px">Contrôle manuel</div>
     <div class="manual-grid">
       <span class="manual-label">WiFi 1</span>
-      <button onclick="bench('1on')" title="Allumer routeur WiFi 1">ON</button>
-      <button onclick="bench('1off')" title="Éteindre routeur WiFi 1">OFF</button>
+      <button id="mbtn-1on"  onclick="manual('1on')"  title="Allumer routeur WiFi 1">ON</button>
+      <button id="mbtn-1off" onclick="manual('1off')" title="Éteindre routeur WiFi 1">OFF</button>
       <span class="manual-label">WiFi 2</span>
-      <button onclick="bench('2on')" title="Allumer routeur WiFi 2">ON</button>
-      <button onclick="bench('2off')" title="Éteindre routeur WiFi 2">OFF</button>
+      <button id="mbtn-2on"  onclick="manual('2on')"  title="Allumer routeur WiFi 2">ON</button>
+      <button id="mbtn-2off" onclick="manual('2off')" title="Éteindre routeur WiFi 2">OFF</button>
       <span class="manual-label">Calculateur</span>
-      <button onclick="bench('3on')" title="Allumer calculateur">ON</button>
-      <button onclick="bench('3off')" title="Éteindre calculateur">OFF</button>
+      <button id="mbtn-3on"  onclick="manual('3on')"  title="Allumer calculateur">ON</button>
+      <button id="mbtn-3off" onclick="manual('3off')" title="Éteindre calculateur">OFF</button>
     </div>
     <div class="statusline" id="statusline">RUN · mode MOCK. Renseignez les 3 URL du bloc CONFIG puis passez MOCK à false.</div>
     <div class="cfg-note">Données réelles via TELEMETRY_URL. Boutons = commandes relais via BENCH_URL. Webcam via WEBCAM_EMBED.</div>
@@ -350,6 +352,7 @@ let st={mode:'idleoff',connected:false,connecting:false,engineOn:false,activeWif
  counterFrozen:false,frozenBacklog:0,sdFull:false,intraday:0,inWork:false,
  dispCloud:0,dispSd:0,_led:'#2E7D32',   // valeurs lissées + couleur courante pour la boucle d'animation
  dispBacklog:0,_lastBacklogRaw:null,backlogAnchor:0,backlogAnchorTs:0,  // backlog : valeur affichée + ancre réelle (valeur, instant)
+ pendingSsid:null,pendingUntil:0,   // cible WiFi commandée manuellement (affichage optimiste)
  manShown:false,manImg:'static',manX:MAN_STOP, womanShown:false,womanImg:'lstatic',womanX:WOMAN_STOP};
 
 const fmt=n=>Math.round(n).toLocaleString('fr-FR').replace(/\u00a0/g,' ');
@@ -487,6 +490,26 @@ function nowFrac(){ const d=new Date(); return (d.getHours()*3600+d.getMinutes()
 function applyTelemetry(t){
   st.intraday=nowFrac();
   if(t && t.days!=null) st.days=t.days;
+  // Affichage optimiste : si une bascule WiFi vient d'être commandée, on montre
+  // directement la cible (connexion en cours) sans flasher l'ancien SSID, jusqu'à
+  // ce que la télémétrie confirme le nouveau SSID (ou expiration du délai).
+  if(st.pendingSsid){
+    if(t && t.online!==false && t.ssid===st.pendingSsid){
+      st.pendingSsid=null;                       // cible atteinte -> flux normal
+    } else if(Date.now() < st.pendingUntil){
+      st.connected=true; st.connecting=true; st.counterFrozen=false;
+      st.ssidLabel='connexion à '+st.pendingSsid+'…'; st.ssidClass='searching';
+      st.activeWifi = st.pendingSsid===SSID2?'woman':(st.pendingSsid===SSID1?'man':null);
+      if(t){ st.engineOn=!!t.engine_on; st.cloud=t.cloud_rate||0; st.sdRate=t.sd_rate||0;
+             if(t.sd_percent!=null) st.sdPercent=t.sd_percent;
+             if(t.backlog!=null){ anchorBacklog(t.backlog); st.backlog=t.backlog; } }
+      if(st.activeWifi==='man'){ st.manShown=true; st.manImg='static'; st.manX=MAN_STOP; st.womanShown=false; }
+      else { st.womanShown=true; st.womanImg='lstatic'; st.womanX=WOMAN_STOP; st.manShown=false; }
+      render(); return;
+    } else {
+      st.pendingSsid=null;                        // délai dépassé -> on rend la main à la télémétrie
+    }
+  }
   if(!t || t.online===false){
     st.connected=false; st.connecting=false; st.activeWifi=null; st.cloud=0;
     st.engineOn = !!(t && t.engine_on);
@@ -539,6 +562,26 @@ async function bench(cmd){
     if(!r.ok) throw new Error('HTTP '+r.status); return true;
   }catch(e){ status('Échec commande « '+cmd+' » : '+e.message); return false; }
 }
+/* ---- boutons de contrôle manuel ----
+   manual() = marque le bouton pressé (vert/texte blanc, l'opposé s'éteint),
+   pose la cible WiFi optimiste, puis envoie la commande au banc. */
+function manual(cmd){ markManual(cmd); expectWifi(cmd); bench(cmd); }
+
+// Le bouton pressé passe actif et reste vert jusqu'à ce qu'on presse son opposé.
+function markManual(cmd){
+  const ch=cmd[0], on=cmd.endsWith('on');
+  document.getElementById('mbtn-'+ch+'on') .classList.toggle('active', on);
+  document.getElementById('mbtn-'+ch+'off').classList.toggle('active', !on);
+}
+
+// Allumer un routeur = intention d'aller sur ce SSID : on l'affiche tout de suite
+// (connexion en cours) sans repasser par l'ancien, le temps que la télémétrie suive.
+function expectWifi(cmd){
+  if(cmd==='1on'){ st.pendingSsid=SSID1; st.pendingUntil=Date.now()+15000; }
+  else if(cmd==='2on'){ st.pendingSsid=SSID2; st.pendingUntil=Date.now()+15000; }
+  else if(cmd==='1off'||cmd==='2off'){ st.pendingSsid=null; }  // laisse la télémétrie décider
+}
+
 async function sendStep(i){
   document.querySelectorAll('.step-btn').forEach(b=>b.classList.toggle('playing',+b.dataset.step===i));
   const seq = i===1?['2off','1on'] : i===2?['1off'] : ['2on'];
