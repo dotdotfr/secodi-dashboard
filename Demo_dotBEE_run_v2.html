@@ -159,7 +159,7 @@ body{margin:0;font-family:'Open Sans',sans-serif;background:var(--paper);color:v
 <body>
 <div class="demo-header">
   <div class="brand">DOT<span>·</span>DOT &nbsp; #dot-BEE</div>
-  <div class="tag">RUN · données réelles · banc Wasquehal <span id="run-mode-badge">MOCK</span></div>
+  <div class="tag">RUN · données réelles · banc Wasquehal <span id="run-mode-badge">MOCK</span> <span id="build-tag" style="opacity:.5;font-size:9px"></span></div>
 </div>
 <div class="demo-body">
   <aside class="scenario">
@@ -314,6 +314,7 @@ body{margin:0;font-family:'Open Sans',sans-serif;background:var(--paper);color:v
 <script>
 /* =================== CONFIG RUN — À RENSEIGNER =====================
    Passez MOCK à false une fois les trois URL renseignées.            */
+const BUILD = 'v85300c9+dbg';   // marqueur de version — visible dans le bandeau et la console
 const _p = new URLSearchParams(location.search);
 const CFG_RUN = {
   MOCK: false,                // true = données simulées embarquées (pour voir tourner la page). false = banc réel.
@@ -559,7 +560,12 @@ async function poll(){
   try{
     const r=await fetch(CFG_RUN.TELEMETRY_URL,{cache:'no-store'});
     if(!r.ok) throw new Error('HTTP '+r.status);
-    applyTelemetry(normalizeTelemetry(await r.json()));
+    const raw=await r.json();
+    const nrm=normalizeTelemetry(raw);
+    console.log('[dotBEE '+BUILD+'] raw.current_ssid=', raw.current_ssid, '| raw.mqtt_connected=', raw.mqtt_connected,
+                '| norm.ssid=', nrm&&nrm.ssid, '| norm.online=', nrm&&nrm.online,
+                '| st.ssid=', st.ssid, '| txnActive=', st.txnActive, 'txnFrom=', st.txnFrom, 'txnTarget=', st.txnTarget);
+    applyTelemetry(nrm);
     status('Télémétrie OK · '+new Date().toLocaleTimeString('fr-FR'));
   }catch(e){
     applyTelemetry(null);
@@ -694,6 +700,7 @@ function animateGauges(now){
 function initRun(){
   const badge=document.getElementById('run-mode-badge');
   badge.textContent=CFG_RUN.MOCK?'MOCK':'LIVE'; badge.classList.toggle('live',!CFG_RUN.MOCK);
+  document.getElementById('build-tag').textContent=BUILD;
   if(CFG_RUN.WEBCAM_EMBED){
     const fr=document.getElementById('webcam-frame');
     fr.innerHTML='<iframe src="'+CFG_RUN.WEBCAM_EMBED+'" allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe>';
