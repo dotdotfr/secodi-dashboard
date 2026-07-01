@@ -255,6 +255,11 @@ body{margin:0;font-family:'Open Sans',sans-serif;background:var(--paper);color:v
           <div class="bar"><div class="fill" id="sd-fill"></div></div>
           <div class="sub" id="hero-sub">tampon vidé · rien à rattraper</div>
         </div>
+        <div class="sd-block" style="margin-top:10px">
+          <div class="sd-head"><span>trames envoyées au cloud</span><strong id="cloud-total">0</strong></div>
+          <div class="bar"><div class="fill" id="cloud-total-fill" style="background:var(--blue)"></div></div>
+          <div class="sub">Nombre total de trames envoyées sur le cloud depuis le 01/07/2026</div>
+        </div>
       </div>
     </div>
 
@@ -322,7 +327,7 @@ body{margin:0;font-family:'Open Sans',sans-serif;background:var(--paper);color:v
 <script>
 /* =================== CONFIG RUN — À RENSEIGNER =====================
    Passez MOCK à false une fois les trois URL renseignées.            */
-const BUILD = 'v-ui1';   // marqueur de version — visible dans le bandeau et la console
+const BUILD = 'v-cloudtotal';   // marqueur de version — visible dans le bandeau et la console
 const _p = new URLSearchParams(location.search);
 const CFG_RUN = {
   MOCK: false,                // true = données simulées embarquées (pour voir tourner la page). false = banc réel.
@@ -365,6 +370,7 @@ let st={mode:'idleoff',connected:false,connecting:false,engineOn:false,activeWif
  lastHbTs:0,lastOnline:null,        // dernier heartbeat appliqué (horodatage) + dernier état en ligne connu
  awaitActive:false,awaitMode:null,awaitSsid:null,awaitBaseline:0,awaitUntil:0,  // après commande WiFi : masque jusqu'à un heartbeat GENUINEMENT nouveau (last_seen_ts avancé)
  cmdPending:false,lastCmdOk:null,   // indicateur roue/coche à côté de « Contrôle manuel »
+ totalFramesCloud:0,                // total cumulé de trames envoyées au cloud (depuis 01/07/2026, fourni par le backend)
  manShown:false,manImg:'static',manX:MAN_STOP, womanShown:false,womanImg:'lstatic',womanX:WOMAN_STOP};
 
 const fmt=n=>Math.round(n).toLocaleString('fr-FR').replace(/\u00a0/g,' ');
@@ -414,6 +420,17 @@ function render(){
     (!st.connected && st.backlog>0) ? 'stockage local · '+fmt(st.backlog)+' trames sur SD' :
     (st.backlog<1 ? 'tampon vidé · rien à rattraper' : 'connecté');
   renderField(s);
+}
+
+// Total cumulé de trames envoyées au cloud : chiffre + barre auto-échelle
+// (elle se remplit dans l'ordre de grandeur courant, palier à la dizaine supérieure).
+function renderCloudTotal(){
+  const el=document.getElementById('cloud-total'); if(!el) return;
+  const v=Math.max(0,st.totalFramesCloud||0);
+  el.textContent=fmt(Math.round(v));
+  const scale = v<1 ? 1 : Math.pow(10, Math.ceil(Math.log10(v+1)));
+  const pct = Math.min(100, v/scale*100);
+  const f=document.getElementById('cloud-total-fill'); if(f) f.style.width=pct+'%';
 }
 
 function setImg(id,on){const e=document.getElementById(id); if(e) e.classList.toggle('hide',!on);}
@@ -542,6 +559,7 @@ async function poll(){
     const nrm=normalizeTelemetry(raw);
     const hb=Number(raw.last_seen_ts)||0;         // horodatage du dernier heartbeat enregistré
     const online=!!(nrm&&nrm.online);
+    if(raw.total_frames_cloud!=null){ st.totalFramesCloud=Number(raw.total_frames_cloud)||0; renderCloudTotal(); }
     const fresh = hb>st.lastHbTs || online!==st.lastOnline;   // vraie nouveauté : nouveau heartbeat OU bascule en ligne/hors ligne
     const tm=new Date().toLocaleTimeString('fr-FR');
     // Bandeau debug : ce qui est REÇU (brut backend) vs ce qui est AFFICHÉ, sans filtrage.
