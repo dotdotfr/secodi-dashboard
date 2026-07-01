@@ -314,7 +314,7 @@ body{margin:0;font-family:'Open Sans',sans-serif;background:var(--paper);color:v
 <script>
 /* =================== CONFIG RUN — À RENSEIGNER =====================
    Passez MOCK à false une fois les trois URL renseignées.            */
-const BUILD = 'v85300c9+dbg';   // marqueur de version — visible dans le bandeau et la console
+const BUILD = 'v-hbgate+dbg';   // marqueur de version — visible dans le bandeau et la console
 const _p = new URLSearchParams(location.search);
 const CFG_RUN = {
   MOCK: false,                // true = données simulées embarquées (pour voir tourner la page). false = banc réel.
@@ -354,7 +354,7 @@ let st={mode:'idleoff',connected:false,connecting:false,engineOn:false,activeWif
  dispCloud:0,dispSd:0,_led:'#2E7D32',   // valeurs lissées + couleur courante pour la boucle d'animation
  dispBacklog:0,_lastBacklogRaw:null,backlogAnchor:0,backlogAnchorTs:0,  // backlog : valeur affichée + ancre réelle (valeur, instant)
  ssid:null,                         // SSID confirmé par la télémétrie (source de vérité)
- txnActive:false,txnFrom:null,txnTarget:null,txnUntil:0,  // transition WiFi en cours (état quitté, cible éventuelle, délai)
+ lastHbTs:0,lastOnline:null,        // dernier heartbeat appliqué (horodatage) + dernier état en ligne connu
  manShown:false,manImg:'static',manX:MAN_STOP, womanShown:false,womanImg:'lstatic',womanX:WOMAN_STOP};
 
 const fmt=n=>Math.round(n).toLocaleString('fr-FR').replace(/\u00a0/g,' ');
@@ -492,38 +492,6 @@ function nowFrac(){ const d=new Date(); return (d.getHours()*3600+d.getMinutes()
 function applyTelemetry(t){
   st.intraday=nowFrac();
   if(t && t.days!=null) st.days=t.days;
-  // Transition WiFi : une commande vient de changer l'état. On masque l'ancien SSID
-  // par un affichage neutre "en cours…" et on RÉSOUT dès que la télémétrie ne montre
-  // plus l'état d'avant (txnFrom) — sans deviner la cible. Timeout de secours à 30s.
-  if(st.txnActive){
-    const telState = (!t || t.online===false) ? null : (t.ssid||null);  // état montré par la télémétrie
-    // Résolution : si la cible est connue (connexion depuis hors réseau), on attend
-    // EXACTEMENT ce SSID — sinon le backend peut renvoyer brièvement l'ancien SSID
-    // périmé au moment de la reconnexion. Sinon (bascule/coupure), on résout dès que
-    // la télémétrie ne montre plus l'état d'avant.
-    const resolved = st.txnTarget ? (telState === st.txnTarget)
-                                  : (telState !== st.txnFrom);
-    if(resolved || Date.now() >= st.txnUntil){
-      st.txnActive=false;                          // résolu (ou délai) -> on rend la main au flux normal
-    } else {
-      st.connected=true; st.connecting=true; st.counterFrozen=false;
-      if(st.txnTarget){                            // cible fiable (connexion depuis hors réseau)
-        st.ssidLabel='connexion à '+st.txnTarget+'…';
-        st.activeWifi = st.txnTarget===SSID2?'woman':'man';
-      } else {                                     // bascule/coupure : cible incertaine -> neutre
-        st.ssidLabel='commutation WiFi…'; st.activeWifi=null;
-      }
-      st.ssidClass='searching';
-      if(t && t.online!==false){ st.engineOn=!!t.engine_on; st.cloud=t.cloud_rate||0; st.sdRate=t.sd_rate||0;
-             if(t.sd_percent!=null) st.sdPercent=t.sd_percent;
-             if(t.backlog!=null){ anchorBacklog(t.backlog); st.backlog=t.backlog; } }
-      else { st.cloud=0; }
-      if(st.activeWifi==='man'){ st.manShown=true; st.manImg='static'; st.manX=MAN_STOP; st.womanShown=false; }
-      else if(st.activeWifi==='woman'){ st.womanShown=true; st.womanImg='lstatic'; st.womanX=WOMAN_STOP; st.manShown=false; }
-      else { st.manShown=false; st.womanShown=false; }
-      render(); return;
-    }
-  }
   if(!t || t.online===false){
     st.connected=false; st.connecting=false; st.activeWifi=null; st.cloud=0; st.ssid=null;
     st.engineOn = !!(t && t.engine_on);
@@ -562,11 +530,21 @@ async function poll(){
     if(!r.ok) throw new Error('HTTP '+r.status);
     const raw=await r.json();
     const nrm=normalizeTelemetry(raw);
-    console.log('[dotBEE '+BUILD+'] raw.current_ssid=', raw.current_ssid, '| raw.mqtt_connected=', raw.mqtt_connected,
-                '| norm.ssid=', nrm&&nrm.ssid, '| norm.online=', nrm&&nrm.online,
-                '| st.ssid=', st.ssid, '| txnActive=', st.txnActive, 'txnFrom=', st.txnFrom, 'txnTarget=', st.txnTarget);
-    applyTelemetry(nrm);
-    status('Télémétrie OK · '+new Date().toLocaleTimeString('fr-FR'));
+    const hb=Number(raw.last_seen_ts)||0;         // horodatage du dernier heartbeat enregistré
+    const online=!!(nrm&&nrm.online);
+    const fresh = hb>st.lastHbTs || online!==st.lastOnline;   // vraie nouveauté : nouveau heartbeat OU bascule en ligne/hors ligne
+    const tm=new Date().toLocaleTimeString('fr-FR');
+    console.log('[dotBEE '+BUILD+'] hb=',hb,'lastHb=',st.lastHbTs,'fresh=',fresh,
+                '| raw.current_ssid=', raw.current_ssid, '| mqtt_connected=', raw.mqtt_connected,
+                '| norm.ssid=', nrm&&nrm.ssid, 'online=', online, '| st.ssid=', st.ssid);
+    if(fresh){
+      if(hb>st.lastHbTs) st.lastHbTs=hb;
+      st.lastOnline=online;
+      applyTelemetry(nrm);                        // on ne met à jour QUE sur un nouveau heartbeat
+      status('Télémétrie · nouveau heartbeat · '+tm);
+    } else {
+      status('Télémétrie · en attente d’un nouveau heartbeat · '+tm);
+    }
   }catch(e){
     applyTelemetry(null);
     status('Lecture télémétrie en échec ('+e.message+') — affichage figé.');
@@ -585,31 +563,13 @@ async function bench(cmd){
 /* ---- boutons de contrôle manuel ----
    manual() = marque le bouton pressé (vert/texte blanc, l'opposé s'éteint),
    pose la cible WiFi optimiste, puis envoie la commande au banc. */
-function manual(cmd){ markManual(cmd); if(!CFG_RUN.MOCK) expectWifi(cmd); bench(cmd); }
+function manual(cmd){ markManual(cmd); bench(cmd); }
 
 // Le bouton pressé passe actif et reste vert jusqu'à ce qu'on presse son opposé.
 function markManual(cmd){
   const ch=cmd[0], on=cmd.endsWith('on');
   document.getElementById('mbtn-'+ch+'on') .classList.toggle('active', on);
   document.getElementById('mbtn-'+ch+'off').classList.toggle('active', !on);
-}
-
-// Décide si la commande CHANGE l'état, en ne se fiant qu'au SSID confirmé (télémétrie) :
-//  - allumer un routeur ne change quelque chose QUE si on est hors réseau (curCh===null) ;
-//  - couper un routeur ne change quelque chose QUE si c'est le routeur actif (curCh===ch).
-// Un « couper l'actif » change toujours le SSID (vers l'autre ou hors réseau), d'où la
-// transition. On n'a PAS besoin de connaître l'état de l'autre routeur pour décider ça.
-function expectWifi(cmd){
-  const ch=cmd[0], on=cmd.endsWith('on');
-  if(ch!=='1' && ch!=='2') return;                     // calculateur : pas de WiFi
-  const cur   = st.ssid || null;                       // état confirmé (source de vérité)
-  const curCh = cur===SSID1?'1':(cur===SSID2?'2':null);
-  const changes = on ? (curCh===null) : (curCh===ch);
-  if(!changes) return;                                 // no-op matériel -> aucune transition affichée
-  st.txnFrom   = cur;                                  // état qu'on quitte (à voir disparaître de la télémétrie)
-  st.txnTarget = on ? (ch==='1'?SSID1:SSID2) : null;   // cible fiable seulement en connexion depuis hors réseau
-  st.txnActive = true;
-  st.txnUntil  = Date.now()+30000;
 }
 
 async function sendStep(i){
