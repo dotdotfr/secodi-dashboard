@@ -352,7 +352,7 @@ let st={mode:'idleoff',connected:false,connecting:false,engineOn:false,activeWif
  counterFrozen:false,frozenBacklog:0,sdFull:false,intraday:0,inWork:false,
  dispCloud:0,dispSd:0,_led:'#2E7D32',   // valeurs lissées + couleur courante pour la boucle d'animation
  dispBacklog:0,_lastBacklogRaw:null,backlogAnchor:0,backlogAnchorTs:0,  // backlog : valeur affichée + ancre réelle (valeur, instant)
- ssid:null,r1on:true,r2on:true,     // SSID courant + état ON/OFF connu des deux routeurs
+ ssid:null,r1on:false,r2on:false,   // SSID courant + état ON/OFF connu des deux routeurs (éteints au démarrage)
  pendingSsid:null,pendingUntil:0,pendingActive:false,  // cible WiFi optimiste (SSID visé, ou null = coupure)
  manShown:false,manImg:'static',manX:MAN_STOP, womanShown:false,womanImg:'lstatic',womanX:WOMAN_STOP};
 
@@ -697,6 +697,7 @@ function initRun(){
     const fr=document.getElementById('webcam-frame');
     fr.innerHTML='<iframe src="'+CFG_RUN.WEBCAM_EMBED+'" allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe>';
   }
+  markManual('1off'); markManual('2off');   // au démarrage les deux routeurs sont éteints
   applyTelemetry(mockTick());
   setInterval(poll, CFG_RUN.POLL_MS);
   window.addEventListener('resize',()=>render());
