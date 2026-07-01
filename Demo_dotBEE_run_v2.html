@@ -314,7 +314,7 @@ body{margin:0;font-family:'Open Sans',sans-serif;background:var(--paper);color:v
 <script>
 /* =================== CONFIG RUN — À RENSEIGNER =====================
    Passez MOCK à false une fois les trois URL renseignées.            */
-const BUILD = 'v-hbgate+dbg';   // marqueur de version — visible dans le bandeau et la console
+const BUILD = 'v-hbmask+dbg';   // marqueur de version — visible dans le bandeau et la console
 const _p = new URLSearchParams(location.search);
 const CFG_RUN = {
   MOCK: false,                // true = données simulées embarquées (pour voir tourner la page). false = banc réel.
@@ -355,6 +355,7 @@ let st={mode:'idleoff',connected:false,connecting:false,engineOn:false,activeWif
  dispBacklog:0,_lastBacklogRaw:null,backlogAnchor:0,backlogAnchorTs:0,  // backlog : valeur affichée + ancre réelle (valeur, instant)
  ssid:null,                         // SSID confirmé par la télémétrie (source de vérité)
  lastHbTs:0,lastOnline:null,        // dernier heartbeat appliqué (horodatage) + dernier état en ligne connu
+ awaitHb:false,awaitBaseline:0,awaitUntil:0,  // après une commande WiFi : on masque l'ancien SSID jusqu'au prochain heartbeat
  manShown:false,manImg:'static',manX:MAN_STOP, womanShown:false,womanImg:'lstatic',womanX:WOMAN_STOP};
 
 const fmt=n=>Math.round(n).toLocaleString('fr-FR').replace(/\u00a0/g,' ');
@@ -537,6 +538,17 @@ async function poll(){
     console.log('[dotBEE '+BUILD+'] hb=',hb,'lastHb=',st.lastHbTs,'fresh=',fresh,
                 '| raw.current_ssid=', raw.current_ssid, '| mqtt_connected=', raw.mqtt_connected,
                 '| norm.ssid=', nrm&&nrm.ssid, 'online=', online, '| st.ssid=', st.ssid);
+    // Masque après commande WiFi : tant qu'aucun heartbeat PLUS RÉCENT que la baseline
+    // n'est arrivé, on n'affiche pas l'ancien SSID -> "connexion en cours…".
+    if(st.awaitHb){
+      if(hb>st.awaitBaseline || Date.now()>=st.awaitUntil){
+        st.awaitHb=false;                         // nouveau heartbeat post-commande (ou délai) -> on révèle la réalité
+      } else {
+        showConnectingMask();
+        status('Connexion en cours… (attente heartbeat) · '+tm);
+        return;                                   // on saute la mise à jour tant que rien de neuf
+      }
+    }
     if(fresh){
       if(hb>st.lastHbTs) st.lastHbTs=hb;
       st.lastOnline=online;
@@ -561,15 +573,31 @@ async function bench(cmd){
   }catch(e){ status('Échec commande « '+cmd+' » : '+e.message); return false; }
 }
 /* ---- boutons de contrôle manuel ----
-   manual() = marque le bouton pressé (vert/texte blanc, l'opposé s'éteint),
-   pose la cible WiFi optimiste, puis envoie la commande au banc. */
-function manual(cmd){ markManual(cmd); bench(cmd); }
+   manual() = marque le bouton, arme l'attente d'un nouveau heartbeat (WiFi), envoie. */
+function manual(cmd){
+  markManual(cmd);
+  // Commande WiFi (1/2) : on masque l'ancien SSID jusqu'à l'arrivée d'un heartbeat
+  // PLUS RÉCENT que celui qu'on avait à l'instant de la commande. Pas de prédiction.
+  if(!CFG_RUN.MOCK && (cmd[0]==='1' || cmd[0]==='2')){
+    st.awaitHb=true; st.awaitBaseline=st.lastHbTs; st.awaitUntil=Date.now()+30000;
+    showConnectingMask();                         // retour visuel immédiat, sans attendre le prochain poll
+  }
+  bench(cmd);
+}
 
 // Le bouton pressé passe actif et reste vert jusqu'à ce qu'on presse son opposé.
 function markManual(cmd){
   const ch=cmd[0], on=cmd.endsWith('on');
   document.getElementById('mbtn-'+ch+'on') .classList.toggle('active', on);
   document.getElementById('mbtn-'+ch+'off').classList.toggle('active', !on);
+}
+
+// Affichage neutre "connexion en cours…" : masque l'ancien WiFi sans en deviner un nouveau.
+function showConnectingMask(){
+  st.connected=true; st.connecting=true; st.counterFrozen=false;
+  st.ssidLabel='connexion en cours…'; st.ssidClass='searching';
+  st.activeWifi=null; st.manShown=false; st.womanShown=false;
+  render();
 }
 
 async function sendStep(i){
