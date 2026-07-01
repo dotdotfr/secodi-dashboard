@@ -507,7 +507,7 @@ function applyTelemetry(t){
       else { st.womanShown=true; st.womanImg='lstatic'; st.womanX=WOMAN_STOP; st.manShown=false; }
       render(); return;
     } else {
-      st.pendingSsid=null;                        // délai dépassé -> on rend la main à la télémétrie
+      st.pendingSsid=null;                        // délai (30s) dépassé -> on rend la main à la télémétrie
     }
   }
   if(!t || t.online===false){
@@ -577,8 +577,8 @@ function markManual(cmd){
 // Allumer un routeur = intention d'aller sur ce SSID : on l'affiche tout de suite
 // (connexion en cours) sans repasser par l'ancien, le temps que la télémétrie suive.
 function expectWifi(cmd){
-  if(cmd==='1on'){ st.pendingSsid=SSID1; st.pendingUntil=Date.now()+15000; }
-  else if(cmd==='2on'){ st.pendingSsid=SSID2; st.pendingUntil=Date.now()+15000; }
+  if(cmd==='1on'){ st.pendingSsid=SSID1; st.pendingUntil=Date.now()+30000; }
+  else if(cmd==='2on'){ st.pendingSsid=SSID2; st.pendingUntil=Date.now()+30000; }
   else if(cmd==='1off'||cmd==='2off'){ st.pendingSsid=null; }  // laisse la télémétrie décider
 }
 
