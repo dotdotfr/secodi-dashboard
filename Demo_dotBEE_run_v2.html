@@ -327,7 +327,7 @@ body{margin:0;font-family:'Open Sans',sans-serif;background:var(--paper);color:v
 <script>
 /* =================== CONFIG RUN — À RENSEIGNER =====================
    Passez MOCK à false une fois les trois URL renseignées.            */
-const BUILD = 'v-2hb';   // marqueur de version — visible dans le bandeau et la console
+const BUILD = 'v-1hb';   // marqueur de version — visible dans le bandeau et la console
 const _p = new URLSearchParams(location.search);
 const CFG_RUN = {
   MOCK: false,                // true = données simulées embarquées (pour voir tourner la page). false = banc réel.
@@ -590,11 +590,11 @@ async function poll(){
         if(sig===st.awaitCandidate){ st.awaitConfirms++; }
         else { st.awaitCandidate=sig; st.awaitConfirms=1; }
       }
-      if(st.awaitConfirms>=2 || Date.now()>=st.awaitUntil){
-        st.awaitActive=false; updateManualStatus();  // 2 confirmations (ou filet 120s) -> coche verte
+      if(st.awaitConfirms>=1 || Date.now()>=st.awaitUntil){
+        st.awaitActive=false; updateManualStatus();  // 1 confirmation fraîche (ou filet 120s) -> coche verte
       } else {
         showConnectingMask(); updateManualStatus();  // en attente -> roue qui tourne
-        status(maskLabel()+' (validation '+st.awaitConfirms+'/2) · '+tm);
+        status(maskLabel()+' · '+tm);
         return;                                   // on masque l'ancien état tant que non validé
       }
     }
