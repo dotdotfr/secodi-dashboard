@@ -157,6 +157,7 @@ body{margin:0;font-family:'Open Sans',sans-serif;background:var(--paper);color:v
 </style>
 </head>
 <body>
+<div id="dbg-overlay" style="position:fixed;top:0;right:0;z-index:9999;background:#111;color:#0f0;font:11px/1.4 monospace;padding:6px 9px;white-space:pre;max-width:60vw;opacity:.9;">debug…</div>
 <div class="demo-header">
   <div class="brand">DOT<span>·</span>DOT &nbsp; #dot-BEE</div>
   <div class="tag">RUN · données réelles · banc Wasquehal <span id="run-mode-badge">MOCK</span> <span id="build-tag" style="opacity:.5;font-size:9px"></span></div>
@@ -314,7 +315,7 @@ body{margin:0;font-family:'Open Sans',sans-serif;background:var(--paper);color:v
 <script>
 /* =================== CONFIG RUN — À RENSEIGNER =====================
    Passez MOCK à false une fois les trois URL renseignées.            */
-const BUILD = 'v-ssidwait+dbg';   // marqueur de version — visible dans le bandeau et la console
+const BUILD = 'v-dbgoverlay';   // marqueur de version — visible dans le bandeau et la console
 const _p = new URLSearchParams(location.search);
 const CFG_RUN = {
   MOCK: false,                // true = données simulées embarquées (pour voir tourner la page). false = banc réel.
@@ -535,6 +536,14 @@ async function poll(){
     const online=!!(nrm&&nrm.online);
     const fresh = hb>st.lastHbTs || online!==st.lastOnline;   // vraie nouveauté : nouveau heartbeat OU bascule en ligne/hors ligne
     const tm=new Date().toLocaleTimeString('fr-FR');
+    // Bandeau debug : ce qui est REÇU (brut backend) vs ce qui est AFFICHÉ, sans filtrage.
+    const dbg=document.getElementById('dbg-overlay');
+    if(dbg) dbg.textContent =
+      'REÇU  ssid='+raw.current_ssid+'  mqtt_connected='+raw.mqtt_connected+'\n'+
+      '      last_seen_ts='+hb+'  (âge '+Math.round((Date.now()-hb)/1000)+'s)\n'+
+      'ÉTAT  st.ssid='+st.ssid+'  label='+st.ssidLabel+'\n'+
+      'MASK  await='+st.awaitActive+' '+(st.awaitMode||'')+' '+(st.awaitSsid||'')+'\n'+
+      'poll '+tm;
     console.log('[dotBEE '+BUILD+'] hb=',hb,'lastHb=',st.lastHbTs,'fresh=',fresh,
                 '| raw.current_ssid=', raw.current_ssid, '| mqtt_connected=', raw.mqtt_connected,
                 '| norm.ssid=', nrm&&nrm.ssid, 'online=', online,
