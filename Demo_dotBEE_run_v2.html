@@ -496,7 +496,12 @@ function applyTelemetry(t){
   // plus l'état d'avant (txnFrom) — sans deviner la cible. Timeout de secours à 30s.
   if(st.txnActive){
     const telState = (!t || t.online===false) ? null : (t.ssid||null);  // état montré par la télémétrie
-    const resolved = telState !== st.txnFrom;                            // la télémétrie a bougé
+    // Résolution : si la cible est connue (connexion depuis hors réseau), on attend
+    // EXACTEMENT ce SSID — sinon le backend peut renvoyer brièvement l'ancien SSID
+    // périmé au moment de la reconnexion. Sinon (bascule/coupure), on résout dès que
+    // la télémétrie ne montre plus l'état d'avant.
+    const resolved = st.txnTarget ? (telState === st.txnTarget)
+                                  : (telState !== st.txnFrom);
     if(resolved || Date.now() >= st.txnUntil){
       st.txnActive=false;                          // résolu (ou délai) -> on rend la main au flux normal
     } else {
