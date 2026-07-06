@@ -524,7 +524,9 @@ function applyTelemetry(t){
     st.ssidLabel='hors réseau'; st.ssidClass='disconnected';
     if(t){ if(t.sd_percent!=null) st.sdPercent=t.sd_percent;
            if(t.backlog!=null){ anchorBacklog(t.backlog); st.frozenBacklog=t.backlog; st.backlog=t.backlog; }
-           st.sdRate=t.sd_rate||0; }
+           // La file SD ne s'alimente que si le calculateur tourne : moteur éteint = CAN inactif = 0 tr/s,
+           // donc pas de croissance de la file (animateGauges prédit backlog += sdRate*elapsed hors ligne).
+           st.sdRate = t.engine_on ? (t.sd_rate||0) : 0; }
     st.sdFull=st.sdPercent>=100;
     st.manShown=false; st.womanShown=false;
     render(); return;
