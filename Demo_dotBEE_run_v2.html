@@ -581,10 +581,21 @@ async function poll(){
         return;
       }
     }
-    // On applique dès qu'une valeur significative change : SSID, état en ligne, ou
-    // nouveau heartbeat (métriques). last_seen_ts ne bouge pas sur l'availability,
-    // c'est pourquoi on inclut aussi ssid/online dans la signature.
-    const sig = online+'|'+(ssid||'')+'|'+hb;
+    // On applique dès qu'une valeur visible change, pas seulement quand le heartbeat
+    // bouge : sinon un backend qui stabilise last_seen_ts peut laisser la page figée.
+    const sig = [
+      online ? 1 : 0,
+      ssid || '',
+      nrm.engine_on ? 1 : 0,
+      nrm.cloud_rate || 0,
+      nrm.sd_rate || 0,
+      nrm.sd_percent || 0,
+      nrm.backlog || 0,
+      nrm.days || 0,
+      nrm.mode || '',
+      hb,
+      raw.total_frames_cloud || 0,
+    ].join('|');
     if(sig!==st.lastSig){
       st.lastSig=sig; st.lastOnline=online; if(hb>st.lastHbTs) st.lastHbTs=hb;
       applyTelemetry(nrm);
