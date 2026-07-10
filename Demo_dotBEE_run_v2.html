@@ -329,7 +329,7 @@ body{margin:0;font-family:'Open Sans',sans-serif;background:var(--paper);color:v
 const _p = new URLSearchParams(location.search);
 const CFG_RUN = {
   MOCK: false,                // true = données simulées embarquées (pour voir tourner la page). false = banc réel.
-  TELEMETRY_URL: _p.get('telemetry') || 'https://dot-bee-fastapi-production.up.railway.app/devices/sentinel-94A9902E2F30/status',
+  TELEMETRY_URL: _p.get('telemetry') || 'https://dot-bee-fastapi-production.up.railway.app/devices/sentinel-206EF128953C/status',
   BENCH_URL:     _p.get('bench')     || '',       // surchargeable via ?bench=https://xyz.trycloudflare.com/command
   BENCH_TOKEN:   _p.get('token')     || '',       // jeton partagé requis par le bridge, via ?token=...
   WEBCAM_EMBED:  _p.get('webcam')    || '',       // surchargeable via ?webcam=https://...
@@ -558,7 +558,7 @@ async function poll(){
     if(!r.ok) throw new Error('HTTP '+r.status);
     const raw=await r.json();
     const nrm=normalizeTelemetry(raw);
-    const hb=Number(raw.last_seen_ts)||0;         // horodatage du dernier heartbeat enregistré
+    const hb=Number(raw.last_seen_ts ?? raw.mqtt_connected_ts) || 0;  // heartbeat: last_seen_ts, avec repli sur mqtt_connected_ts
     const online=!!(nrm&&nrm.online);
     const ssid = online ? (nrm.ssid||null) : null;
     if(raw.total_frames_cloud!=null){ st.totalFramesCloud=Number(raw.total_frames_cloud)||0; renderCloudTotal(); }
