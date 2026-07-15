@@ -56,7 +56,7 @@ body{margin:0;font-family:'Open Sans',sans-serif;background:var(--paper);color:v
 .fiche-top .badge{width:46px;height:34px;background:var(--brand);border-radius:3px;flex-shrink:0;}
 .fiche-top h2{margin:0;font-size:14px;}
 .fiche-top .ref{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);margin-top:1px;}
-.row1{display:grid;grid-template-columns:1.4fr 1fr;gap:14px;}
+.row1{display:grid;grid-template-columns:230px 1fr;gap:14px;}
 .cell-label{font-size:9px;font-weight:700;letter-spacing:1.1px;color:var(--muted);text-transform:uppercase;text-align:center;}
 .box-card{border:1px solid var(--line);padding:10px;display:flex;flex-direction:column;align-items:center;gap:5px;}
 .wifi-status{display:flex;align-items:center;justify-content:center;gap:7px;height:20px;}
@@ -170,10 +170,6 @@ body{margin:0;font-family:'Open Sans',sans-serif;background:var(--paper);color:v
 </div>
 <div class="demo-body">
   <aside class="scenario">
-    <!-- Bloc scenario masque le 15/07/2026 pour agrandir la vue camera (espace libere
-         dans la colonne .row1, pas dans cette colonne-ci). REPLI : retirer style="display:none"
-         ci-dessous pour tout reafficher tel quel si besoin. -->
-    <div id="scenario-steps" style="display:none">
     <div class="eyebrow">Scénario — 3 étapes</div>
     <button class="step-btn fake" data-step="1" disabled aria-disabled="true" tabindex="-1">
       <span class="num">1</span><span class="txt"><b>Au dépôt — moteur arrêté</b><small>Active #dotdot_wifi1 (et coupe wifi2). Le #dot-BEE s'associe.</small></span><span class="play">&#9654;</span>
@@ -190,7 +186,6 @@ body{margin:0;font-family:'Open Sans',sans-serif;background:var(--paper);color:v
         <button id="poll-btn" onclick="poll()">&#8635; Actualiser</button>
         <button onclick="resetBench()">&#9209; Reset banc</button>
       </div>
-    </div>
     </div>
     <div class="eyebrow" style="margin-top:14px;display:flex;align-items:center;gap:6px">Contrôle manuel <span id="manual-status" class="mstat"></span></div>
     <div class="manual-grid">
