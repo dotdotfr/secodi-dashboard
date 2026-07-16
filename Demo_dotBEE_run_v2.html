@@ -335,6 +335,13 @@ const CFG_RUN = {
   WEBCAM_EMBED:  _p.get('webcam')    || '',       // surchargeable via ?webcam=https://...
   POLL_MS: 2000               // période d'interrogation de la télémétrie
 };
+// Nettoyage d'URL : les tokens (bench/webcam) transitent en clair dans la barre
+// d'adresse au chargement. On les lit une fois dans CFG_RUN ci-dessus, puis on
+// efface la query string affichee (sans recharger la page) pour qu'aucun secret
+// ne reste visible/filmable pendant un partage d'ecran ou un enregistrement.
+if(_p.toString()){
+  history.replaceState(null, '', location.pathname);
+}
 /* Schéma JSON accepté de TELEMETRY_URL — deux formats reconnus :
 
    Format dot-Lake  (GET /devices/{id}/status) :
