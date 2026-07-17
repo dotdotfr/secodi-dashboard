@@ -752,24 +752,29 @@ function animateGauges(now){
   // Compteur de trames restantes — modèle unifié (règles produit) :
   //   RÈGLE A : la file ne CROÎT que si le calculateur tourne. st.sdRate est déjà
   //             gelé à 0 par applyTelemetry quand engine_on est faux (offline ET
-  //             online) — la formule de croissance ci-dessous en hérite gratuitement.
-  //   RÈGLE B : elle continue de monter tant qu'aucune VRAIE valeur de vidage n'a
-  //             été confirmée par le backend — y compris pendant la reconnexion
+  //             online) — le débit net en hérite gratuitement.
+  //   RÈGLE B : elle continue d'évoluer par extrapolation tant qu'aucun VIDAGE n'a
+  //             été confirmé par le backend — y compris pendant la reconnexion
   //             optimiste (masque UI « connexion à… »), qui ne touche JAMAIS
-  //             st.mode. Le seul déclencheur du vidage est st.mode==='catchup',
-  //             écrit uniquement par applyTelemetry() sur une vraie trame
-  //             télémétrie (jamais par showConnectingMask()) — donc l'ancre et le
-  //             changement de mode arrivent TOUJOURS ensemble, dans le même appel :
-  //             pas de saut de continuité possible (contrairement à un signal basé
-  //             sur des débits en direct, contaminable par l'optimisme de l'UI).
-  // Résultat : croissance extrapolée en continu (anime les ~10s entre battements),
-  // puis dès confirmation du vidage, plus AUCUNE extrapolation — uniquement des
-  // sauts vers les vraies valeurs reçues (réalisme demandé), bornés à zéro.
-  const growing = st.mode !== 'catchup';
+  //             st.mode NI st.cloud/st.sdRate (ceux-ci ne changent que sur une
+  //             vraie trame télémétrie). Le seul déclencheur du vidage-confirmé
+  //             est st.mode==='catchup' : ancre et mode arrivent TOUJOURS ensemble
+  //             dans le même appel applyTelemetry() — pas de saut de continuité
+  //             possible.
+  //   RÉGIME STABLE (streaming direct, mode 'depot') : ni accumulation ni vidage
+  //             confirmé — le débit NET (cloud - sd) tient lieu d'extrapolation,
+  //             ce qui reste ~plat quand le cloud absorbe au même rythme que le
+  //             SD (pas de croissance artificielle en dehors du hors-réseau).
+  // Résultat : hors 'catchup', l'affichage suit le débit net en continu (montée
+  // hors-réseau, quasi-plat en streaming stable) ; dès confirmation du vidage,
+  // plus AUCUNE extrapolation — uniquement des sauts vers les vraies valeurs
+  // reçues (réalisme demandé), bornés à zéro.
+  const netDrain = st.cloud - st.sdRate;   // >0 = vide, <0 = accumule (jamais lu si catchup)
+  const draining = st.mode === 'catchup';
   const elapsed  = st.backlogAnchorTs ? (now - st.backlogAnchorTs)/1000 : 0;
-  const predicted = Math.max(0, growing
-    ? st.backlogAnchor + st.sdRate*elapsed
-    : st.backlogAnchor);
+  const predicted = Math.max(0, draining
+    ? st.backlogAnchor
+    : st.backlogAnchor - netDrain*elapsed);
   // L'affichage GLISSE vers la prédiction au lieu de la suivre sèchement :
   //    - au ré-ancrage (battement), la correction de dérive est absorbée en douceur
   //      au lieu d'un saut sec (garde-fou) ;
