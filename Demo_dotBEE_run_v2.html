@@ -746,16 +746,21 @@ function animateGauges(now){
   st.dispCloud=ease(st.dispCloud, st.cloud);
   st.dispSd   =ease(st.dispSd,    st.sdRate);
   // Compteur de trames restantes.
-  // 1) Prédiction linéaire depuis l'ancre, mais UNIQUEMENT hors réseau : la ou
-  //    aucune télémétrie n'arrive, extrapoler la montée du stockage (au débit CAN)
-  //    est la seule façon d'animer entre deux battements. En connecté, on ne
-  //    devance JAMAIS une baisse : la file ne descend que lorsque le backend a
-  //    réellement confirmé la nouvelle valeur (réalisme demandé) — l'affichage
-  //    vise l'ancre elle-même, pas une extrapolation au débit courant.
+  // 1) Prédiction linéaire depuis l'ancre, mais UNIQUEMENT en accumulation
+  //    (netDrain<=0, typiquement hors réseau) : là où aucune télémétrie
+  //    n'arrive, extrapoler la montée du stockage est la seule façon d'animer
+  //    entre deux battements. En VIDAGE (netDrain>0), on ne devance JAMAIS une
+  //    baisse : la file ne descend que lorsque le backend a réellement confirmé
+  //    la nouvelle valeur (réalisme demandé) — l'affichage vise l'ancre elle-même.
+  //    Piège évité : NE PAS se baser sur st.connected, qui bascule à true dès le
+  //    clic manuel (masque optimiste "connexion à…"), avant toute confirmation —
+  //    ça figeait le compteur sur une ancre déjà dépassée par l'extrapolation en
+  //    cours, provoquant une chute visible au clic. netDrain, lui, ne change
+  //    qu'avec de vraies valeurs de débit reçues du backend.
   //    Bornée à zéro -> jamais de négatif (garde-fou 1).
   const netDrain = st.cloud - st.sdRate;         // >0 = descend, <0 = monte (stockage)
   const elapsed  = st.backlogAnchorTs ? (now - st.backlogAnchorTs)/1000 : 0;
-  const predicted = st.connected
+  const predicted = netDrain > 0
     ? st.backlogAnchor
     : Math.max(0, st.backlogAnchor - netDrain*elapsed);
   // 2) L'affichage GLISSE vers la prédiction au lieu de la suivre sèchement :
