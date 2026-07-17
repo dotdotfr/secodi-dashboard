@@ -529,6 +529,10 @@ function applyTelemetry(t){
     st.connected=false; st.connecting=false; st.activeWifi=null; st.cloud=0; st.ssid=null;
     st.engineOn = !!(t && t.engine_on);
     st.ssidLabel='hors réseau'; st.ssidClass='disconnected';
+    // On efface un éventuel 'catchup' périmé d'avant la coupure : hors réseau,
+    // aucun vidage n'est possible (rien à confirmer), donc animateGauges() doit
+    // repasser en extrapolation de croissance (cf. logique unifiée plus bas).
+    st.mode='storage';
     if(t){ if(t.sd_percent!=null) st.sdPercent=t.sd_percent;
            if(t.backlog!=null){ anchorBacklog(t.backlog); st.frozenBacklog=t.backlog; st.backlog=t.backlog; }
            // La file SD ne s'alimente que si le calculateur tourne : moteur éteint = CAN inactif = 0 tr/s,
@@ -745,29 +749,32 @@ function animateGauges(now){
   const ease=(disp,tgt)=> Math.abs(tgt-disp)<1 ? tgt : disp+(tgt-disp)*k;
   st.dispCloud=ease(st.dispCloud, st.cloud);
   st.dispSd   =ease(st.dispSd,    st.sdRate);
-  // Compteur de trames restantes.
-  // 1) Prédiction linéaire depuis l'ancre, mais UNIQUEMENT en accumulation
-  //    (netDrain<=0, typiquement hors réseau) : là où aucune télémétrie
-  //    n'arrive, extrapoler la montée du stockage est la seule façon d'animer
-  //    entre deux battements. En VIDAGE (netDrain>0), on ne devance JAMAIS une
-  //    baisse : la file ne descend que lorsque le backend a réellement confirmé
-  //    la nouvelle valeur (réalisme demandé) — l'affichage vise l'ancre elle-même.
-  //    Piège évité : NE PAS se baser sur st.connected, qui bascule à true dès le
-  //    clic manuel (masque optimiste "connexion à…"), avant toute confirmation —
-  //    ça figeait le compteur sur une ancre déjà dépassée par l'extrapolation en
-  //    cours, provoquant une chute visible au clic. netDrain, lui, ne change
-  //    qu'avec de vraies valeurs de débit reçues du backend.
-  //    Bornée à zéro -> jamais de négatif (garde-fou 1).
-  const netDrain = st.cloud - st.sdRate;         // >0 = descend, <0 = monte (stockage)
+  // Compteur de trames restantes — modèle unifié (règles produit) :
+  //   RÈGLE A : la file ne CROÎT que si le calculateur tourne. st.sdRate est déjà
+  //             gelé à 0 par applyTelemetry quand engine_on est faux (offline ET
+  //             online) — la formule de croissance ci-dessous en hérite gratuitement.
+  //   RÈGLE B : elle continue de monter tant qu'aucune VRAIE valeur de vidage n'a
+  //             été confirmée par le backend — y compris pendant la reconnexion
+  //             optimiste (masque UI « connexion à… »), qui ne touche JAMAIS
+  //             st.mode. Le seul déclencheur du vidage est st.mode==='catchup',
+  //             écrit uniquement par applyTelemetry() sur une vraie trame
+  //             télémétrie (jamais par showConnectingMask()) — donc l'ancre et le
+  //             changement de mode arrivent TOUJOURS ensemble, dans le même appel :
+  //             pas de saut de continuité possible (contrairement à un signal basé
+  //             sur des débits en direct, contaminable par l'optimisme de l'UI).
+  // Résultat : croissance extrapolée en continu (anime les ~10s entre battements),
+  // puis dès confirmation du vidage, plus AUCUNE extrapolation — uniquement des
+  // sauts vers les vraies valeurs reçues (réalisme demandé), bornés à zéro.
+  const growing = st.mode !== 'catchup';
   const elapsed  = st.backlogAnchorTs ? (now - st.backlogAnchorTs)/1000 : 0;
-  const predicted = netDrain > 0
-    ? st.backlogAnchor
-    : Math.max(0, st.backlogAnchor - netDrain*elapsed);
-  // 2) L'affichage GLISSE vers la prédiction au lieu de la suivre sèchement :
+  const predicted = Math.max(0, growing
+    ? st.backlogAnchor + st.sdRate*elapsed
+    : st.backlogAnchor);
+  // L'affichage GLISSE vers la prédiction au lieu de la suivre sèchement :
   //    - au ré-ancrage (battement), la correction de dérive est absorbée en douceur
-  //      au lieu d'un saut (garde-fou 3) ;
-  //    - quand predicted atteint 0, le glissement décélère vers zéro au lieu d'une
-  //      chute nette (garde-fou 2 : atterrissage doux en fin de purge).
+  //      au lieu d'un saut sec (garde-fou) ;
+  //    - un saut de valeur confirmée reste visible en ~1s (k=0.15), pas instantané,
+  //      sans jamais anticiper une baisse non confirmée.
   st.dispBacklog = ease(st.dispBacklog, predicted);
   document.getElementById('frames-val').textContent = fmt(Math.round(st.dispBacklog));
   const led=st._led;
