@@ -746,12 +746,18 @@ function animateGauges(now){
   st.dispCloud=ease(st.dispCloud, st.cloud);
   st.dispSd   =ease(st.dispSd,    st.sdRate);
   // Compteur de trames restantes.
-  // 1) Prédiction linéaire depuis l'ancre au débit NET = cloud - local : on vide
-  //    vers le cloud pendant que de nouvelles trames arrivent localement.
+  // 1) Prédiction linéaire depuis l'ancre, mais UNIQUEMENT hors réseau : la ou
+  //    aucune télémétrie n'arrive, extrapoler la montée du stockage (au débit CAN)
+  //    est la seule façon d'animer entre deux battements. En connecté, on ne
+  //    devance JAMAIS une baisse : la file ne descend que lorsque le backend a
+  //    réellement confirmé la nouvelle valeur (réalisme demandé) — l'affichage
+  //    vise l'ancre elle-même, pas une extrapolation au débit courant.
   //    Bornée à zéro -> jamais de négatif (garde-fou 1).
   const netDrain = st.cloud - st.sdRate;         // >0 = descend, <0 = monte (stockage)
   const elapsed  = st.backlogAnchorTs ? (now - st.backlogAnchorTs)/1000 : 0;
-  const predicted = Math.max(0, st.backlogAnchor - netDrain*elapsed);
+  const predicted = st.connected
+    ? st.backlogAnchor
+    : Math.max(0, st.backlogAnchor - netDrain*elapsed);
   // 2) L'affichage GLISSE vers la prédiction au lieu de la suivre sèchement :
   //    - au ré-ancrage (battement), la correction de dérive est absorbée en douceur
   //      au lieu d'un saut (garde-fou 3) ;
