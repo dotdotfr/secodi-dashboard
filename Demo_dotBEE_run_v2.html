@@ -538,6 +538,7 @@ function applyTelemetry(t){
     st.manShown=false; st.womanShown=false;
     render(); return;
   }
+  const wasOffline = !st.connected;
   st.connected=true; st.connecting=false; st.counterFrozen=false;
   st.ssid=t.ssid||null;
   st.ssidLabel=t.ssid||'connecté'; st.ssidClass='';
@@ -545,7 +546,17 @@ function applyTelemetry(t){
   st.engineOn=!!t.engine_on;
   st.cloud=t.cloud_rate||0; st.sdRate=t.sd_rate||0;
   if(t.sd_percent!=null) st.sdPercent=t.sd_percent;
-  if(t.backlog!=null){ anchorBacklog(t.backlog); st.backlog=t.backlog; }
+  if(t.backlog!=null){
+    // Garde-fou reconnexion : a l'instant precis ou on repasse hors-reseau -> connecte,
+    // le backend peut renvoyer un backlog pas encore a jour (meme classe de probleme
+    // que le SSID perime resolu le 01/07 - cf. [[feedback-contracts-over-heuristics]]).
+    // On ignore UNE lecture qui chuterait brutalement vers ~0 juste a cet instant ;
+    // l'ancre precedente + le nouveau debit de vidage (deja appliques ci-dessus)
+    // continuent de faire converger l'affichage en douceur. Le poll suivant (~2s)
+    // reprend une confiance normale, quelle que soit sa valeur.
+    const suspicious = wasOffline && st.backlog>50 && t.backlog < st.backlog*0.1;
+    if(!suspicious){ anchorBacklog(t.backlog); st.backlog=t.backlog; }
+  }
   st.sdFull=st.sdPercent>=100;
   st.mode = t.mode || ((st.cloud > (st.sdRate*1.2) && st.backlog>1) ? 'catchup' : 'depot');
   if(st.activeWifi==='man'){ st.manShown=true; st.manImg='static'; st.manX=MAN_STOP; st.womanShown=false; }
