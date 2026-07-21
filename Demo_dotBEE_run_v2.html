@@ -327,21 +327,24 @@ body{margin:0;font-family:'Open Sans',sans-serif;background:var(--paper);color:v
 /* =================== CONFIG RUN — À RENSEIGNER =====================
    Passez MOCK à false une fois les trois URL renseignées.            */
 const _p = new URLSearchParams(location.search);
-// Hostname Tailscale FIXE du banc (bench-dotdot.tail026388.ts.net, Funnel actif,
-// port unique 443) — définitif depuis le 20/07/2026, ne bouge plus. Codé en dur
-// puisque ce n'est PAS un secret (juste une adresse) ; les TOKENS, eux, restent
-// TOUJOURS passés en paramètre (jamais en dur) — la page est servie en clair sur
-// GitHub Pages, quiconque peut lire le code source. bench/webcam restent
-// surchargeables via ?bench=/?webcam= pour retomber sur cloudflared pendant la
-// validation croisée, le temps de prouver la chaîne Tailscale de bout en bout.
+// Hostname Tailscale FIXE du banc (bench-dotdot.tail026388.ts.net) — définitif
+// depuis le 20/07/2026. Accès restreint au tailnet DotDot via `tailscale serve`
+// (PAS de Funnel : le banc n'est plus joignable publiquement du tout). L'identité
+// Tailscale est désormais LA barrière d'accès — les tokens applicatifs ne sont
+// donc plus requis par défaut : lien de démo nu, sans paramètre. Ils restent
+// utilisables en ?token=/?webcamtoken= pour une défense en profondeur ponctuelle
+// ou un repli sur cloudflared pendant une validation croisée.
+// ⚠️ Si un tunnel public (Funnel, cloudflared) est un jour rebranché sur ces
+// mêmes services, les tokens redeviennent indispensables — voir RUNBOOK.md.
 const BENCH_HOST = 'https://bench-dotdot.tail026388.ts.net';
+const benchToken  = _p.get('token')       || '';
 const webcamToken = _p.get('webcamtoken') || '';
 const CFG_RUN = {
   MOCK: false,                // true = données simulées embarquées (pour voir tourner la page). false = banc réel.
   TELEMETRY_URL: _p.get('telemetry') || 'https://dot-bee-fastapi-production.up.railway.app/devices/sentinel-206EF128953C/status',
   BENCH_URL:     _p.get('bench')     || (BENCH_HOST + '/command'),
-  BENCH_TOKEN:   _p.get('token')     || '',       // jeton partagé requis par le bridge, via ?token=...
-  WEBCAM_EMBED:  _p.get('webcam')    || (webcamToken ? BENCH_HOST + '/stream?token=' + encodeURIComponent(webcamToken) : ''),
+  BENCH_TOKEN:   benchToken,          // vide par défaut : accès protégé par le tailnet, pas par un secret applicatif
+  WEBCAM_EMBED:  _p.get('webcam')    || (BENCH_HOST + '/stream' + (webcamToken ? '?token=' + encodeURIComponent(webcamToken) : '')),
   POLL_MS: 2000               // période d'interrogation de la télémétrie
 };
 // Nettoyage d'URL : les tokens (bench/webcam) transitent en clair dans la barre
