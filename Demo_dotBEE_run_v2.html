@@ -556,6 +556,7 @@ function applyTelemetry(t){
   st.intraday=nowFrac();
   if(t && t.days!=null) st.days=t.days;
   if(!t || t.online===false){
+    const wasOnline = st.connected;
     st.connected=false; st.connecting=false; st.activeWifi=null; st.cloud=0; st.ssid=null;
     st.engineOn = !!(t && t.engine_on);
     st.ssidLabel='hors réseau'; st.ssidClass='disconnected';
@@ -564,7 +565,20 @@ function applyTelemetry(t){
     // repasser en extrapolation de croissance (cf. logique unifiée plus bas).
     st.mode='storage';
     if(t){ if(t.sd_percent!=null) st.sdPercent=t.sd_percent;
-           if(t.backlog!=null){ anchorBacklog(t.backlog); st.frozenBacklog=t.backlog; st.backlog=t.backlog; }
+           if(t.backlog!=null){
+             // Garde-fou déconnexion (miroir du garde-fou reconnexion ci-dessous) :
+             // sur la toute première trame hors-ligne, le backend peut renvoyer un
+             // backlog pas encore à jour, artificiellement élevé par rapport au
+             // dernier vrai chiffre connu en streaming (même classe de problème
+             // que la lecture périmée à la reconnexion). On ignore UNE lecture qui
+             // bondirait anormalement juste à cet instant ; l'ancienne ancre
+             // continue d'extrapoler la croissance normalement depuis sa vraie
+             // valeur, au lieu d'un saut instantané. Le poll suivant (~2s) reprend
+             // une confiance normale, quelle que soit sa valeur.
+             const suspiciousJump = wasOnline && st.backlogAnchor < 50
+                                     && t.backlog > Math.max(500, st.backlogAnchor*5);
+             if(!suspiciousJump){ anchorBacklog(t.backlog); st.frozenBacklog=t.backlog; st.backlog=t.backlog; }
+           }
            // La file SD ne s'alimente que si le calculateur tourne : moteur éteint = CAN inactif = 0 tr/s,
            // donc pas de croissance de la file (animateGauges prédit backlog += sdRate*elapsed hors ligne).
            st.sdRate = t.engine_on ? (t.sd_rate||0) : 0; }
