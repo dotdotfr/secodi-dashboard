@@ -400,7 +400,7 @@ let st={mode:'idleoff',connected:false,connecting:false,engineOn:false,activeWif
  ssidLabel:'hors portée',ssidClass:'neutral',cloud:0,sdRate:0,sdPercent:0,backlog:0,days:0,
  counterFrozen:false,frozenBacklog:0,sdFull:false,intraday:0,inWork:false,
  dispCloud:0,dispSd:0,_led:'#2E7D32',   // valeurs lissées + couleur courante pour la boucle d'animation
- dispBacklog:0,_lastBacklogRaw:null,backlogAnchor:0,backlogAnchorTs:0,  // backlog : valeur affichée + ancre réelle (valeur, instant)
+ dispBacklog:0,_lastBacklogRaw:null,backlogAnchor:0,backlogAnchorTs:0,reconnectGraceUntil:0,  // backlog : valeur affichée + ancre réelle (valeur, instant) + fenêtre de grâce reconnexion
  ssid:null,                         // SSID confirmé par la télémétrie (source de vérité)
  lastHbTs:0,lastOnline:null,        // dernier heartbeat appliqué (horodatage) + dernier état en ligne connu
  awaitActive:false,awaitMode:null,awaitSsid:null,awaitUntil:0,  // masque optimiste après commande WiFi
@@ -587,6 +587,17 @@ function applyTelemetry(t){
     render(); return;
   }
   const wasOffline = !st.connected;
+  if(wasOffline){
+    // Fenêtre de grâce reconnexion : juste après une reconnexion, le backend
+    // peut renvoyer un backlog déjà en baisse AVANT d'avoir signalé le mode
+    // catchup sur une trame explicite — l'ancre suit alors une vraie donnée qui
+    // baisse trop tôt (chute visible entre "connecté" et "déstockage" confirmé).
+    // Pendant cette fenêtre courte (le temps d'au moins un battement backend),
+    // animateGauges() verrouille l'affichage sur lui-même, pas juste sur l'ancre.
+    // Passé ce délai, on repasse au verrou normal (ancre) pour ne pas reproduire
+    // le bug inverse (jauge figée en régime stable, cf. correctif précédent).
+    st.reconnectGraceUntil = performance.now() + 12000;
+  }
   st.connected=true; st.connecting=false; st.counterFrozen=false;
   st.ssid=t.ssid||null;
   st.ssidLabel=t.ssid||'connecté'; st.ssidClass='';
@@ -824,18 +835,25 @@ function animateGauges(now){
   const draining = st.mode === 'catchup';
   const elapsed  = st.backlogAnchorTs ? (now - st.backlogAnchorTs)/1000 : 0;
   const rawPredicted = st.backlogAnchor - netDrain*elapsed;
-  // Verrou : le plancher porte sur l'ANCRE (dernière vraie valeur reçue, filtrée
-  // par le garde-fou anti-lecture-périmée dans applyTelemetry — voir "suspicious"),
-  // pas sur l'affichage courant. Un plancher sur l'affichage empêchait à tort
-  // toute correction descendante légitime hors 'catchup' (ex. régime stable où
-  // le backend confirme un résidu réel plus bas que l'estimation de croissance
-  // hors-réseau) — la jauge restait figée sur une ancienne valeur trop haute au
-  // lieu de suivre la vraie donnée reçue. Ce que ce verrou empêche : extrapoler
-  // AU-DELÀ de l'ancre vers une baisse non confirmée (rawPredicted < ancre) ; il
-  // n'empêche jamais de suivre l'ancre elle-même, qui EST la vraie valeur connue.
+  // Verrou : le plancher porte normalement sur l'ANCRE (dernière vraie valeur
+  // reçue, filtrée par le garde-fou anti-lecture-périmée dans applyTelemetry —
+  // voir "suspicious"), pas sur l'affichage courant en permanence — un plancher
+  // permanent sur l'affichage empêchait à tort toute correction descendante
+  // légitime hors 'catchup' (ex. régime stable où le backend confirme un résidu
+  // réel plus bas que l'estimation de croissance hors-réseau) — la jauge restait
+  // figée sur une ancienne valeur trop haute au lieu de suivre la vraie donnée.
+  //
+  // EXCEPTION bornée dans le temps : juste après une reconnexion (fenêtre de
+  // grâce posée dans applyTelemetry), le backend peut renvoyer un backlog déjà
+  // en baisse avant d'avoir signalé 'catchup' — l'ancre suit alors une vraie
+  // donnée qui descend trop tôt. Pendant cette fenêtre courte uniquement, le
+  // plancher passe sur l'affichage courant (verrou strict, aucune baisse visible
+  // tant que la fenêtre n'est pas expirée) ; passé le délai, retour au verrou
+  // normal sur l'ancre pour ne pas reproduire le figeage en régime stable.
+  const inReconnectGrace = now < (st.reconnectGraceUntil || 0);
   const predicted = draining
-    ? Math.max(0, rawPredicted)                    // vidage confirmé : extrapolation pleine + atterrissage doux
-    : Math.max(st.backlogAnchor, rawPredicted);     // hors catchup : suit l'ancre, jamais en dessous
+    ? Math.max(0, rawPredicted)                                                        // vidage confirmé : extrapolation pleine + atterrissage doux
+    : Math.max(inReconnectGrace ? st.dispBacklog : st.backlogAnchor, rawPredicted);     // hors catchup : suit l'ancre (verrou strict temporaire à la reconnexion)
   // L'affichage GLISSE vers la prédiction au lieu de la suivre sèchement :
   //    - au ré-ancrage (battement), la correction de dérive est absorbée en douceur
   //      au lieu d'un saut sec (garde-fou) ;
