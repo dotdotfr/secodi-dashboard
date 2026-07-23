@@ -795,16 +795,24 @@ function animateGauges(now){
   //             confirmé — le débit NET (cloud - sd) tient lieu d'extrapolation,
   //             ce qui reste ~plat quand le cloud absorbe au même rythme que le
   //             SD (pas de croissance artificielle en dehors du hors-réseau).
-  // Résultat : hors 'catchup', l'affichage suit le débit net en continu (montée
-  // hors-réseau, quasi-plat en streaming stable) ; dès confirmation du vidage,
-  // plus AUCUNE extrapolation — uniquement des sauts vers les vraies valeurs
-  // reçues (réalisme demandé), bornés à zéro.
-  const netDrain = st.cloud - st.sdRate;   // >0 = vide, <0 = accumule (jamais lu si catchup)
+  // Correction J60 (demandée J56/confirmée J59 — le verrou empêchait toute
+  // extrapolation même une fois 'catchup' confirmé, donnant un escalier saccadé
+  // au lieu d'un effondrement continu pendant une vraie purge) :
+  //   - AVANT confirmation ('catchup' pas encore reçu) : verrou intact, aucune
+  //     baisse anticipée, seule la croissance/le plat restent autorisés — borne
+  //     basse à l'ancre (Math.max(ancre, ...)).
+  //   - APRÈS confirmation : modèle J45 réactivé entre deux ancres — prédiction
+  //     continue au débit net, l'affichage chasse la prédiction (ease() plus
+  //     bas), atterrissage doux en fin de purge (Math.max(0, ...) décélère au
+  //     lieu de couper net), ré-ancrage silencieux à chaque battement réel
+  //     (anchorBacklog(), inchangé).
+  const netDrain = st.cloud - st.sdRate;   // >0 = vide, <0 = accumule
   const draining = st.mode === 'catchup';
   const elapsed  = st.backlogAnchorTs ? (now - st.backlogAnchorTs)/1000 : 0;
-  const predicted = Math.max(0, draining
-    ? st.backlogAnchor
-    : st.backlogAnchor - netDrain*elapsed);
+  const rawPredicted = st.backlogAnchor - netDrain*elapsed;
+  const predicted = draining
+    ? Math.max(0, rawPredicted)                    // vidage confirmé : extrapolation pleine + atterrissage doux
+    : Math.max(st.backlogAnchor, rawPredicted);     // verrou : jamais sous l'ancre tant que non confirmé
   // L'affichage GLISSE vers la prédiction au lieu de la suivre sèchement :
   //    - au ré-ancrage (battement), la correction de dérive est absorbée en douceur
   //      au lieu d'un saut sec (garde-fou) ;
