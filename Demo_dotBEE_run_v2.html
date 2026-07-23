@@ -810,9 +810,17 @@ function animateGauges(now){
   const draining = st.mode === 'catchup';
   const elapsed  = st.backlogAnchorTs ? (now - st.backlogAnchorTs)/1000 : 0;
   const rawPredicted = st.backlogAnchor - netDrain*elapsed;
+  // Verrou affiné : plancher sur st.dispBacklog (ce qui est REELLEMENT affiché),
+  // pas seulement sur l'ancre. L'ancre elle-meme peut deja avoir legerement
+  // baisse sur la toute premiere trame apres reconnexion (le backend confirme
+  // parfois un backlog un peu plus bas AVANT de confirmer explicitement le mode
+  // catchup sur cette meme trame) - plafonner seulement sur l'ancre laissait donc
+  // passer une micro-descente pre-confirmation. En plafonnant sur l'affichage
+  // courant, la jauge ne peut structurellement PAS descendre tant que 'catchup'
+  // n'est pas confirme, quelle que soit la valeur brute recue entre-temps.
   const predicted = draining
-    ? Math.max(0, rawPredicted)                    // vidage confirmé : extrapolation pleine + atterrissage doux
-    : Math.max(st.backlogAnchor, rawPredicted);     // verrou : jamais sous l'ancre tant que non confirmé
+    ? Math.max(0, rawPredicted)                                     // vidage confirmé : extrapolation pleine + atterrissage doux
+    : Math.max(st.dispBacklog, st.backlogAnchor, rawPredicted);     // verrou : jamais sous l'affiché tant que non confirmé
   // L'affichage GLISSE vers la prédiction au lieu de la suivre sèchement :
   //    - au ré-ancrage (battement), la correction de dérive est absorbée en douceur
   //      au lieu d'un saut sec (garde-fou) ;
