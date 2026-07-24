@@ -726,6 +726,16 @@ function manual(cmd){
       showConnectingMask();                       // retour visuel immédiat (connexion à X… ou déconnexion…)
     }
   }
+  // Commande calculateur (3) : retour visuel immédiat, même principe que le WiFi
+  // ci-dessus — l'animation du tracteur et la croissance de la file SD suivent le
+  // clic tout de suite, sans attendre le prochain battement télémétrie. Purement
+  // optimiste : la vraie trame (t.engine_on) écrase cette valeur au prochain poll,
+  // donc aucun risque de désynchronisation durable si le backend dit autre chose.
+  if(!CFG_RUN.MOCK && ch==='3'){
+    st.engineOn = on;
+    if(!on) st.sdRate = 0;   // coupe la croissance de la file immédiatement (règle A)
+    render();
+  }
   bench(cmd);
 }
 
