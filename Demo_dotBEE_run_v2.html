@@ -846,10 +846,13 @@ function animateGauges(now){
   // EXCEPTION bornée dans le temps : juste après une reconnexion (fenêtre de
   // grâce posée dans applyTelemetry), le backend peut renvoyer un backlog déjà
   // en baisse avant d'avoir signalé 'catchup' — l'ancre suit alors une vraie
-  // donnée qui descend trop tôt. Pendant cette fenêtre courte uniquement, le
-  // plancher passe sur l'affichage courant (verrou strict, aucune baisse visible
-  // tant que la fenêtre n'est pas expirée) ; passé le délai, retour au verrou
-  // normal sur l'ancre pour ne pas reproduire le figeage en régime stable.
+  // donnée qui descend trop tôt. Pendant cette fenêtre courte, le plancher passe
+  // sur l'affichage courant (verrou strict). Relâchement au PREMIER des deux
+  // événements — confirmation de 'catchup' OU expiration des 12s — jamais
+  // seulement l'expiration : `draining` est la condition externe du ternaire,
+  // donc dès que mode==='catchup' on saute directement dans la branche
+  // d'extrapolation pleine, sans jamais consulter inReconnectGrace. Pas de trou
+  // d'affichage figé entre une confirmation précoce et la fin du minuteur.
   const inReconnectGrace = now < (st.reconnectGraceUntil || 0);
   const predicted = draining
     ? Math.max(0, rawPredicted)                                                        // vidage confirmé : extrapolation pleine + atterrissage doux
