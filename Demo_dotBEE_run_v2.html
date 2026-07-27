@@ -783,6 +783,15 @@ function showConnectingMask(){
   st.connected=true; st.connecting=true; st.counterFrozen=false;
   st.ssidLabel = maskLabel(); st.ssidClass='searching';
   st.activeWifi=null; st.manShown=false; st.womanShown=false;
+  // Coupure WiFi (awaitMode==='from') : contrairement au cas général où on ne
+  // sait pas encore ce que va confirmer la télémétrie, ici on sait avec
+  // certitude que le cloud s'arrête immédiatement — c'est littéralement la
+  // commande qu'on vient d'envoyer. Sans ce reset, st.cloud restait figé sur
+  // sa dernière valeur réelle de streaming pendant tout le masque (~15-20s),
+  // donc netDrain (cloud-sdRate) restait ~plat et masquait la vraie
+  // accumulation locale en cours — d'où le rattrapage d'un coup observé une
+  // fois la télémétrie réelle confirmée, au lieu d'une montée visible en direct.
+  if(st.awaitMode==='from') st.cloud=0;
   render();
 }
 
