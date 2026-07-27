@@ -674,6 +674,25 @@ async function poll(){
       raw.total_frames_cloud || 0,
     ].join('|');
     if(sig!==st.lastSig){
+      // DEBUG TEMPORAIRE (demandé — bond de backlog inexpliqué à la déconnexion) :
+      // capture la trame brute EXACTE au moment de la transition connecté->hors
+      // réseau, avant toute normalisation, pour identifier la source réelle du
+      // bond (ancre périmée ? confusion d'unité côté backend ? valeur par défaut ?).
+      // À retirer une fois la cause confirmée.
+      if(st.connected===true && online===false){
+        console.log('[DEBUG backlog déconnexion]', {
+          raw_backlog: raw.backlog,
+          raw_sd_pending_records: raw.sd_pending_records,
+          raw_sd_used_percent: raw.sd_used_percent,
+          raw_sd_percent: raw.sd_percent,
+          raw_can_rx_fps: raw.can_rx_fps,
+          raw_mqtt_tx_fps: raw.mqtt_tx_fps,
+          raw_connectivity_state: raw.connectivity_state,
+          nrm_backlog: nrm.backlog,
+          ancre_avant_transition: st.backlogAnchor,
+          raw_complet: raw,
+        });
+      }
       st.lastSig=sig; st.lastOnline=online; if(hb>st.lastHbTs) st.lastHbTs=hb;
       applyTelemetry(nrm);
       status('Télémétrie · '+tm);
@@ -930,7 +949,12 @@ function initRun(){
     attachWebcamZoom(document.getElementById('webcam-img'));
   }
   markManual('1off'); markManual('2off');   // au démarrage les deux routeurs sont éteints
-  applyTelemetry(mockTick());
+  // Amorce l'affichage avant le premier poll réel (~POLL_MS plus tard) — UNIQUEMENT
+  // en MOCK. Appeler mockTick() hors MOCK était un bug résiduel (code mort qui ne
+  // devait jamais tourner en mode réel) : sans effet sur le bug du bond à 3000 —
+  // vérifié, mock.backlog vaut 0 à l'init — mais un artefact non expliqué qui traîne
+  // n'a rien à faire là non plus.
+  if(CFG_RUN.MOCK) applyTelemetry(mockTick());
   setInterval(poll, CFG_RUN.POLL_MS);
   window.addEventListener('resize',()=>render());
   requestAnimationFrame(animateGauges);
