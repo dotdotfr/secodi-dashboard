@@ -700,6 +700,17 @@ async function poll(){
       status('Télémétrie · inchangé · '+tm);
     }
   }catch(e){
+    // DEBUG TEMPORAIRE (bond de backlog inexpliqué à la déconnexion) : ce chemin
+    // (fetch qui échoue completement, pas une reponse valide {online:false}) n'était
+    // PAS instrumenté — s'il se declenche pendant une vraie coupure, applyTelemetry(null)
+    // ne touche JAMAIS st.sdRate (le if(t){...} qui le remet a jour est entierement
+    // saute quand t est null) : le debit CAN reste fige sur sa DERNIERE vraie valeur
+    // (ex. ~140 tr/s) au lieu d'etre remis a 0 ou reevalue — animateGauges() continue
+    // alors d'extrapoler la croissance a ce debit fige, en silence, sans qu'aucune
+    // trame ne le confirme, jusqu'au retour d'un fetch reussi.
+    if(st.connected===true){
+      console.log('[DEBUG backlog déconnexion] fetch en échec — st.sdRate fige a', st.sdRate, 'erreur:', e.message);
+    }
     applyTelemetry(null);
     status('Lecture télémétrie en échec ('+e.message+') — affichage figé.');
   }finally{ polling=false; }
