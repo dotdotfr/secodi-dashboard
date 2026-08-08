@@ -2590,6 +2590,36 @@
 <script>
   const API_URL = "https://dot-bee-fastapi-production.up.railway.app";
 
+  // --- AUTHENTIFICATION ADMIN (audit securite H-1, 06/08/2026) ---
+  // Ce dashboard affiche des donnees completes (GPS reel non arrondi, DTC,
+  // historique) : ce sont des routes /admin/* ou protegees cote API, donc un
+  // jeton est requis. Jamais de jeton en dur dans cette page publique
+  // (Option B explicitement ecartee par le tuteur - "obfusquer n'est pas
+  // proteger") : saisi une fois par l'operateur, garde en sessionStorage
+  // (efface a la fermeture de l'onglet, jamais persistant, jamais dans le
+  // code source livre).
+  function getAdminToken() {
+    let token = sessionStorage.getItem('dotbee_admin_token');
+    if (!token) {
+      token = window.prompt('Jeton administrateur dotBEE :');
+      if (token) sessionStorage.setItem('dotbee_admin_token', token);
+    }
+    return token || '';
+  }
+
+  async function adminFetch(url, opts = {}) {
+    const headers = Object.assign({}, opts.headers, {
+      'Authorization': 'Bearer ' + getAdminToken(),
+    });
+    const res = await fetch(url, Object.assign({}, opts, { headers }));
+    if (res.status === 401) {
+      // Jeton absent/invalide : on l'efface pour re-demander au prochain appel,
+      // plutot que de re-essayer en boucle avec le meme jeton refuse.
+      sessionStorage.removeItem('dotbee_admin_token');
+    }
+    return res;
+  }
+
   // --- VARIABLES GLOBALES ---
   let currentDeviceId = null;
   let globalFleetData = []; 
@@ -2642,7 +2672,7 @@
   // --- CHARGEMENT INFOS ENGIN (Component ID + Heures moteur) ---
   async function loadDeviceInfo(deviceId) {
     try {
-      const res = await fetch(`${API_URL}/devices/${deviceId}/info`);
+      const res = await adminFetch(`${API_URL}/devices/${deviceId}/info`);
       if (!res.ok) return null;
       return await res.json();
     } catch (e) {
@@ -3064,7 +3094,7 @@
   async function loadDeviceTelemetry(deviceId) {
     try {
       // 1. On interroge les données en temps réel pour les jauges
-      const response = await fetch(`${API_URL}/devices/${deviceId}/telemetry/current`);
+      const response = await adminFetch(`${API_URL}/devices/${deviceId}/telemetry/current`);
       if (!response.ok) throw new Error("Télémétrie introuvable");
       const data = await response.json();
       const telemetry = data.telemetry || data;
@@ -3081,7 +3111,7 @@
 
       // 1bis. On interroge le statut/heartbeat (Wi-Fi / cloud / SD)
       try {
-        const statusResponse = await fetch(`${API_URL}/devices/${deviceId}/status`);
+        const statusResponse = await adminFetch(`${API_URL}/admin/devices/${deviceId}/status`);
         if (statusResponse.ok) {
           updateConnectivity(await statusResponse.json());
         } else {
@@ -3094,7 +3124,7 @@
       // 2. On interroge l'historique sur 7 jours pour le graphique
       const meta = ENGINE_METADATA[deviceId] || { slope: 0 };
       try {
-          const histResponse = await fetch(`${API_URL}/devices/${deviceId}/telemetry/history?days=7`);
+          const histResponse = await adminFetch(`${API_URL}/devices/${deviceId}/telemetry/history?days=7`);
           if (histResponse.ok) {
               const historyData = await histResponse.json();
               updateBatteryChart(meta, historyData); // Envoi des vraies données
@@ -3168,7 +3198,7 @@
     if (!tbody) return;
 
     try {
-      const response = await fetch(`${API_URL}/devices/${deviceId}/dtc`);
+      const response = await adminFetch(`${API_URL}/devices/${deviceId}/dtc`);
       if (!response.ok) throw new Error("Erreur de récupération des DTC");
       const data = await response.json();
 
@@ -3312,7 +3342,7 @@
 
   async function loadVueParc() {
     try {
-      const response = await fetch(`${API_URL}/devices`);
+      const response = await adminFetch(`${API_URL}/devices`);
       if (!response.ok) throw new Error("Erreur réseau");
       globalFleetData = await response.json(); 
       
