@@ -603,7 +603,7 @@ function applyTelemetry(t){
   st.ssidLabel=t.ssid||'connecté'; st.ssidClass='';
   st.activeWifi = t.ssid===SSID2?'woman':(t.ssid===SSID1?'man':null);
   st.engineOn=!!t.engine_on;
-  st.cloud=t.cloud_rate||0; st.sdRate=t.sd_rate||0;
+  st.cloud=t.cloud_rate||0; st.sdRate=t.engine_on ? (t.sd_rate||0) : 0;
   if(t.sd_percent!=null) st.sdPercent=t.sd_percent;
   if(t.backlog!=null){
     // Garde-fou reconnexion : a l'instant precis ou on repasse hors-reseau -> connecte,
@@ -925,6 +925,24 @@ function animateGauges(now){
   requestAnimationFrame(animateGauges);
 }
 
+/* ---- reconnexion auto du flux webcam ---- */
+// Le flux MJPEG est une connexion HTTP unique et longue durée sur l'<img> : la
+// moindre coupure réseau (bascule Wi-Fi, reco Tailscale) la tue définitivement
+// sans que le navigateur ne réessaie de lui-même (ERR_NETWORK_CHANGED observé
+// en usage réel). On réinjecte le src (avec un paramètre anti-cache) après un
+// court délai à chaque erreur pour rouvrir la connexion.
+function attachWebcamReconnect(img, baseSrc){
+  let timer=null;
+  img.addEventListener('error', ()=>{
+    if(timer) return; // évite d'empiler des retries si plusieurs 'error' arrivent d'affilée
+    timer=setTimeout(()=>{
+      timer=null;
+      const sep = baseSrc.includes('?') ? '&' : '?';
+      img.src = baseSrc + sep + '_=' + Date.now();
+    }, 2000);
+  });
+}
+
 /* ---- zoom/pan volontaire sur l'image webcam (molette = zoom, glisser = pan quand zoome) ---- */
 function attachWebcamZoom(img){
   let scale=1, tx=0, ty=0, dragging=false, lastX=0, lastY=0;
@@ -966,7 +984,9 @@ function initRun(){
     // En <img> avec object-fit, elle se cale proprement dans le cadre, et on ajoute
     // un zoom volontaire (molette) + pan (glisser) par-dessus, cf. attachWebcamZoom().
     fr.innerHTML='<img id="webcam-img" src="'+CFG_RUN.WEBCAM_EMBED+'" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;cursor:zoom-in;">';
-    attachWebcamZoom(document.getElementById('webcam-img'));
+    const webcamImg=document.getElementById('webcam-img');
+    attachWebcamZoom(webcamImg);
+    attachWebcamReconnect(webcamImg, CFG_RUN.WEBCAM_EMBED);
   }
   markManual('1off'); markManual('2off');   // au démarrage les deux routeurs sont éteints
   // Amorce l'affichage avant le premier poll réel (~POLL_MS plus tard) — UNIQUEMENT
