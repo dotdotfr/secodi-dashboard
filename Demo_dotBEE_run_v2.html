@@ -552,6 +552,15 @@ function normalizeTelemetry(raw){
 
 /* ---- télémétrie réelle -> état affiché ---- */
 function nowFrac(){ const d=new Date(); return (d.getHours()*3600+d.getMinutes()*60+d.getSeconds())/86400; }
+// RÈGLE A, point unique : la file SD ne s'alimente que si le calculateur tourne
+// (moteur éteint = CAN inactif = 0 tr/s). Les deux branches d'applyTelemetry
+// (hors-ligne et connectée) appellent cette même fonction — l'invariant ne peut
+// plus diverger entre elles comme avant (corrigé le 02/09/2026 : la branche
+// connectée ne l'appliquait pas, seule la branche hors-ligne le faisait, alors
+// que ce fichier l'affirmait déjà comme acquis partout plus bas, cf. animateGauges).
+function gatedSdRate(engineOn, rawSdRate){
+  return engineOn ? (rawSdRate||0) : 0;
+}
 function applyTelemetry(t){
   st.intraday=nowFrac();
   if(t && t.days!=null) st.days=t.days;
@@ -581,7 +590,7 @@ function applyTelemetry(t){
            }
            // La file SD ne s'alimente que si le calculateur tourne : moteur éteint = CAN inactif = 0 tr/s,
            // donc pas de croissance de la file (animateGauges prédit backlog += sdRate*elapsed hors ligne).
-           st.sdRate = t.engine_on ? (t.sd_rate||0) : 0; }
+           st.sdRate = gatedSdRate(t.engine_on, t.sd_rate); }
     st.sdFull=st.sdPercent>=100;
     st.manShown=false; st.womanShown=false;
     render(); return;
@@ -603,7 +612,7 @@ function applyTelemetry(t){
   st.ssidLabel=t.ssid||'connecté'; st.ssidClass='';
   st.activeWifi = t.ssid===SSID2?'woman':(t.ssid===SSID1?'man':null);
   st.engineOn=!!t.engine_on;
-  st.cloud=t.cloud_rate||0; st.sdRate=t.engine_on ? (t.sd_rate||0) : 0;
+  st.cloud=t.cloud_rate||0; st.sdRate=gatedSdRate(t.engine_on, t.sd_rate);
   if(t.sd_percent!=null) st.sdPercent=t.sd_percent;
   if(t.backlog!=null){
     // Garde-fou reconnexion : a l'instant precis ou on repasse hors-reseau -> connecte,
