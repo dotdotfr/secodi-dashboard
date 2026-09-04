@@ -651,16 +651,11 @@ async function poll(){
     const tm=new Date().toLocaleTimeString('fr-FR');
     // Masque optimiste : le backend confirme le SSID immédiatement (message availability),
     // donc on masque juste le court instant entre le clic et la propagation, puis on
-    // révèle dès que la cible WiFi est atteinte, même si l'état ne fait pas de "saut" visible.
+    // révèle dès que l'état (online, ssid) DIFFÈRE de celui d'avant la commande.
     if(st.awaitActive){
-      const targetReached = st.awaitMode==='to'
-        ? (online && ssid===st.awaitSsid)
-        : (!online || ssid!==st.awaitSsid);
-      if(targetReached || Date.now()>=st.awaitUntil){
+      const changed = (online!==st.preOnline) || (ssid!==st.preSsid);
+      if(changed || Date.now()>=st.awaitUntil){
         st.awaitActive=false; updateManualStatus();  // état confirmé changé (ou filet 30s) -> coche verte
-        applyTelemetry(nrm);
-        status('Télémétrie · '+tm);
-        return;
       } else {
         showConnectingMask(); updateManualStatus();  // roue qui tourne
         status(maskLabel()+' · '+tm);
