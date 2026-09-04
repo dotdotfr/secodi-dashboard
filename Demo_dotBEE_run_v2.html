@@ -832,7 +832,11 @@ function mockTick(){
   if(mock.phase==='catch'){ const dur=Math.max(8,mock.peak/14200); const k=Math.min(el/dur,1);
                             mock.sd=mock.peakSd*(1-k); mock.backlog=Math.round(mock.peak*(1-k));
                             if(k>=1) mock.phase='live';
-                            return {online:true,ssid:SSID2,rssi:-57,engine_on:false,cloud_rate:14200,sd_rate:14200,sd_percent:mock.sd,backlog:mock.backlog,days:0,mode:'catchup'}; }
+                            // sd_rate:0, pas 14200 — engine_on:false ici (moteur à l'arrêt pendant
+                            // le déstockage), donc gatedSdRate() l'écraserait de toute façon à 0.
+                            // netDrain = cloud - sd = 14200 - 0 = vidage au débit cloud plein, cohérent
+                            // avec mock.backlog qui décroît à ce rythme ci-dessus.
+                            return {online:true,ssid:SSID2,rssi:-57,engine_on:false,cloud_rate:14200,sd_rate:0,sd_percent:mock.sd,backlog:mock.backlog,days:0,mode:'catchup'}; }
   return {online:true,ssid:SSID2,rssi:-57,engine_on:false,cloud_rate:0,sd_rate:0,sd_percent:0,backlog:0,days:0,mode:'depot'};
 }
 
