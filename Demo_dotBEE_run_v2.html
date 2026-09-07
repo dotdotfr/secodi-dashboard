@@ -404,6 +404,7 @@ let st={mode:'idleoff',connected:false,connecting:false,engineOn:false,activeWif
  ssid:null,                         // SSID confirmé par la télémétrie (source de vérité)
  lastHbTs:0,lastOnline:null,        // dernier heartbeat appliqué (horodatage) + dernier état en ligne connu
  awaitActive:false,awaitMode:null,awaitSsid:null,awaitUntil:0,  // masque optimiste après commande WiFi
+ awaitEngineActive:false,awaitEngineTarget:null,awaitEngineUntil:0,  // idem, après commande calculateur (3on/3off)
  preOnline:null,preSsid:null,lastSig:null,  // état d'avant la commande + signature du dernier état appliqué
  cmdPending:false,lastCmdOk:null,   // indicateur roue/coche à côté de « Contrôle manuel »
  totalFramesCloud:0,                // total cumulé de trames envoyées au cloud (depuis 01/07/2026, fourni par le backend)
@@ -644,6 +645,19 @@ async function poll(){
     if(!r.ok) throw new Error('HTTP '+r.status);
     const raw=await r.json();
     const nrm=normalizeTelemetry(raw);
+    // Filet calculateur : tant que la vraie trame n'a pas confirmé la cible (ou
+    // que le filet 30s n'a pas expiré), on ignore une lecture d'engine_on encore
+    // périmée — sinon un poll plus rapide que la bascule réelle du relais fait
+    // rebondir la jauge SD vers sa valeur d'avant-clic (gatedSdRate() la
+    // recalcule sur cet engine_on non confirmé) avant de re-redescendre au
+    // battement suivant.
+    if(st.awaitEngineActive){
+      if(nrm.engine_on===st.awaitEngineTarget || Date.now()>=st.awaitEngineUntil){
+        st.awaitEngineActive=false; updateManualStatus();
+      } else {
+        nrm.engine_on = st.awaitEngineTarget;
+      }
+    }
     const hb=Number(raw.last_seen_ts ?? raw.mqtt_connected_ts) || 0;  // heartbeat: last_seen_ts, avec repli sur mqtt_connected_ts
     const online=!!(nrm&&nrm.online);
     const ssid = online ? (nrm.ssid||null) : null;
@@ -723,7 +737,7 @@ async function poll(){
 /* ---- indicateur roue/coche (Contrôle manuel) ---- */
 function updateManualStatus(){
   const el=document.getElementById('manual-status'); if(!el) return;
-  if(st.cmdPending || st.awaitActive){ el.className='mstat spin'; el.textContent=''; el.title='commande en cours…'; }
+  if(st.cmdPending || st.awaitActive || st.awaitEngineActive){ el.className='mstat spin'; el.textContent=''; el.title='commande en cours…'; }
   else if(st.lastCmdOk===true){ el.className='mstat ok'; el.textContent='✓'; el.title='ordre passé'; }
   else if(st.lastCmdOk===false){ el.className='mstat err'; el.textContent='✕'; el.title='échec de la commande'; }
   else { el.className='mstat'; el.textContent=''; el.title=''; }
@@ -762,12 +776,16 @@ function manual(cmd){
   }
   // Commande calculateur (3) : retour visuel immédiat, même principe que le WiFi
   // ci-dessus — l'animation du tracteur et la croissance de la file SD suivent le
-  // clic tout de suite, sans attendre le prochain battement télémétrie. Purement
-  // optimiste : la vraie trame (t.engine_on) écrase cette valeur au prochain poll,
-  // donc aucun risque de désynchronisation durable si le backend dit autre chose.
+  // clic tout de suite, sans attendre le prochain battement télémétrie. Le masque
+  // (awaitEngineActive) protège cet état optimiste : sans lui, un poll (~2s) plus
+  // rapide que le temps de bascule réel du relais/calculateur pouvait renvoyer une
+  // trame encore périmée (engine_on:true), que poll() appliquait aussitôt — la
+  // jauge retombait à 0 au clic puis remontait seule avant de re-redescendre au
+  // vrai battement confirmé. Filet 30s comme pour le WiFi.
   if(!CFG_RUN.MOCK && ch==='3'){
     st.engineOn = on;
     if(!on) st.sdRate = 0;   // coupe la croissance de la file immédiatement (règle A)
+    st.awaitEngineActive=true; st.awaitEngineTarget=on; st.awaitEngineUntil=Date.now()+30000;
     render();
   }
   bench(cmd);
