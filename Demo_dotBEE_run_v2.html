@@ -592,6 +592,14 @@ function applyTelemetry(t){
              // une confiance normale, quelle que soit sa valeur.
              const suspiciousJump = wasOnline && st.backlogAnchor < 50
                                      && t.backlog > Math.max(500, st.backlogAnchor*5);
+             // DEBUG TEMPORAIRE (bond backlog 10->900 signalé après une coupure WiFi) :
+             // le garde-fou ci-dessus ne protège QUE la toute première trame hors-ligne
+             // (wasOnline) ; s'il faut plus d'un battement backend pour que la vraie
+             // valeur se stabilise, une 2e trame suspecte passerait sans filtre. Ce log
+             // trace CHAQUE application de backlog hors-ligne (pas seulement la 1re) pour
+             // voir la vraie séquence de valeurs avant de décider si c'est un bug ou un
+             // vrai backlog déjà présent sur la carte. À retirer une fois la cause confirmée.
+             console.log('[DEBUG backlog offline]', {backlog_recu:t.backlog, anchor_avant:st.backlogAnchor, wasOnline, suspiciousJump});
              if(!suspiciousJump){ anchorBacklog(t.backlog); st.frozenBacklog=t.backlog; st.backlog=t.backlog; }
            }
            // La file SD ne s'alimente que si le calculateur tourne : moteur éteint = CAN inactif = 0 tr/s,
