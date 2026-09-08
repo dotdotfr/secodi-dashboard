@@ -403,8 +403,14 @@ let st={mode:'idleoff',connected:false,connecting:false,engineOn:false,activeWif
  dispBacklog:0,_lastBacklogRaw:null,backlogAnchor:0,backlogAnchorTs:0,reconnectGraceUntil:0,  // backlog : valeur affichée + ancre réelle (valeur, instant) + fenêtre de grâce reconnexion
  ssid:null,                         // SSID confirmé par la télémétrie (source de vérité)
  lastHbTs:0,lastOnline:null,        // dernier heartbeat appliqué (horodatage) + dernier état en ligne connu
- awaitActive:false,awaitMode:null,awaitSsid:null,awaitUntil:0,  // masque optimiste après commande WiFi
- preOnline:null,preSsid:null,lastSig:null,  // état d'avant la commande + signature du dernier état appliqué
+ // Masque optimiste après une commande manuelle (WiFi ou calculateur) : un slot par
+ // canal de commande, chacun {..., deadline} le temps qu'il est en attente de
+ // confirmation télémétrie, sinon null. Un seul mécanisme d'armement/expiration
+ // (armPending/clearPending) pour les deux, au lieu de deux jeux de champs
+ // dupliqués — la duplication avait déjà fait diverger un invariant une fois
+ // ailleurs dans ce fichier (cf. gatedSdRate()).
+ pending:{wifi:null,engine:null},
+ lastSig:null,                      // signature du dernier état appliqué
  cmdPending:false,lastCmdOk:null,   // indicateur roue/coche à côté de « Contrôle manuel »
  totalFramesCloud:0,                // total cumulé de trames envoyées au cloud (depuis 01/07/2026, fourni par le backend)
  manShown:false,manImg:'static',manX:MAN_STOP, womanShown:false,womanImg:'lstatic',womanX:WOMAN_STOP};
@@ -644,6 +650,17 @@ async function poll(){
     if(!r.ok) throw new Error('HTTP '+r.status);
     const raw=await r.json();
     const nrm=normalizeTelemetry(raw);
+    // Filet calculateur : tant que la vraie trame n'a pas confirmé la cible (ou
+    // que le filet 30s n'a pas expiré), on ignore une lecture d'engine_on encore
+    // périmée — sinon un poll plus rapide que la bascule réelle du relais fait
+    // rebondir la jauge SD vers sa valeur d'avant-clic (gatedSdRate() la
+    // recalcule sur cet engine_on non confirmé) avant de re-redescendre au
+    // battement suivant.
+    if(st.pending.engine){
+      const p=st.pending.engine;
+      if(nrm.engine_on===p.target || Date.now()>=p.deadline) clearPending('engine');
+      else nrm.engine_on = p.target;
+    }
     const hb=Number(raw.last_seen_ts ?? raw.mqtt_connected_ts) || 0;  // heartbeat: last_seen_ts, avec repli sur mqtt_connected_ts
     const online=!!(nrm&&nrm.online);
     const ssid = online ? (nrm.ssid||null) : null;
@@ -652,10 +669,11 @@ async function poll(){
     // Masque optimiste : le backend confirme le SSID immédiatement (message availability),
     // donc on masque juste le court instant entre le clic et la propagation, puis on
     // révèle dès que l'état (online, ssid) DIFFÈRE de celui d'avant la commande.
-    if(st.awaitActive){
-      const changed = (online!==st.preOnline) || (ssid!==st.preSsid);
-      if(changed || Date.now()>=st.awaitUntil){
-        st.awaitActive=false; updateManualStatus();  // état confirmé changé (ou filet 30s) -> coche verte
+    if(st.pending.wifi){
+      const p=st.pending.wifi;
+      const changed = (online!==p.preOnline) || (ssid!==p.preSsid);
+      if(changed || Date.now()>=p.deadline){
+        clearPending('wifi');  // état confirmé changé (ou filet 30s) -> coche verte
       } else {
         showConnectingMask(); updateManualStatus();  // roue qui tourne
         status(maskLabel()+' · '+tm);
@@ -720,10 +738,15 @@ async function poll(){
   }finally{ polling=false; }
 }
 
+/* ---- masque optimiste générique (commande manuelle en attente de confirmation télémétrie) ---- */
+function armPending(slot,data,ttlMs){ st.pending[slot]={...data,deadline:Date.now()+ttlMs}; }
+function clearPending(slot){ st.pending[slot]=null; updateManualStatus(); }
+function anyPending(){ return !!(st.pending.wifi || st.pending.engine); }
+
 /* ---- indicateur roue/coche (Contrôle manuel) ---- */
 function updateManualStatus(){
   const el=document.getElementById('manual-status'); if(!el) return;
-  if(st.cmdPending || st.awaitActive){ el.className='mstat spin'; el.textContent=''; el.title='commande en cours…'; }
+  if(st.cmdPending || anyPending()){ el.className='mstat spin'; el.textContent=''; el.title='commande en cours…'; }
   else if(st.lastCmdOk===true){ el.className='mstat ok'; el.textContent='✓'; el.title='ordre passé'; }
   else if(st.lastCmdOk===false){ el.className='mstat err'; el.textContent='✕'; el.title='échec de la commande'; }
   else { el.className='mstat'; el.textContent=''; el.title=''; }
@@ -754,20 +777,24 @@ function manual(cmd){
     // Change l'état seulement si : ON alors qu'on est hors réseau, ou OFF du WiFi actif.
     const willChange = on ? (st.ssid===null) : (st.ssid===wifi);
     if(willChange){
-      st.preOnline = st.lastOnline; st.preSsid = st.ssid;   // état d'avant : on masque jusqu'à ce qu'il change
-      st.awaitActive=true; st.awaitMode= on?'to':'from'; st.awaitSsid=wifi;
-      st.awaitUntil=Date.now()+30000;             // filet court : le backend confirme le SSID quasi immédiatement
+      // preOnline/preSsid : état d'avant la commande, pour détecter en douceur que
+      // la télémétrie a bien changé (filet 30s sinon, cf. armPending/clearPending).
+      armPending('wifi',{mode:on?'to':'from',ssid:wifi,preOnline:st.lastOnline,preSsid:st.ssid},30000);
       showConnectingMask();                       // retour visuel immédiat (connexion à X… ou déconnexion…)
     }
   }
   // Commande calculateur (3) : retour visuel immédiat, même principe que le WiFi
   // ci-dessus — l'animation du tracteur et la croissance de la file SD suivent le
-  // clic tout de suite, sans attendre le prochain battement télémétrie. Purement
-  // optimiste : la vraie trame (t.engine_on) écrase cette valeur au prochain poll,
-  // donc aucun risque de désynchronisation durable si le backend dit autre chose.
+  // clic tout de suite, sans attendre le prochain battement télémétrie. Le masque
+  // (pending.engine) protège cet état optimiste : sans lui, un poll (~2s) plus
+  // rapide que le temps de bascule réel du relais/calculateur pouvait renvoyer une
+  // trame encore périmée (engine_on non confirmé), que poll() appliquait aussitôt —
+  // la jauge retombait au clic puis remontait seule avant de re-redescendre au vrai
+  // battement confirmé. Filet 30s comme pour le WiFi.
   if(!CFG_RUN.MOCK && ch==='3'){
     st.engineOn = on;
     if(!on) st.sdRate = 0;   // coupe la croissance de la file immédiatement (règle A)
+    armPending('engine',{target:on},30000);
     render();
   }
   bench(cmd);
@@ -782,20 +809,20 @@ function markManual(cmd){
 
 // Masque de transition : ON -> "connexion à X…", OFF -> "déconnexion…".
 // On n'affiche pas le personnage tant que la télémétrie n'a pas confirmé.
-function maskLabel(){ return st.awaitMode==='from' ? 'déconnexion…' : ('connexion à '+st.awaitSsid+'…'); }
+function maskLabel(){ const p=st.pending.wifi; return p.mode==='from' ? 'déconnexion…' : ('connexion à '+p.ssid+'…'); }
 function showConnectingMask(){
   st.connected=true; st.connecting=true; st.counterFrozen=false;
   st.ssidLabel = maskLabel(); st.ssidClass='searching';
   st.activeWifi=null; st.manShown=false; st.womanShown=false;
-  // Coupure WiFi (awaitMode==='from') : contrairement au cas général où on ne
-  // sait pas encore ce que va confirmer la télémétrie, ici on sait avec
+  // Coupure WiFi (pending.wifi.mode==='from') : contrairement au cas général où on
+  // ne sait pas encore ce que va confirmer la télémétrie, ici on sait avec
   // certitude que le cloud s'arrête immédiatement — c'est littéralement la
   // commande qu'on vient d'envoyer. Sans ce reset, st.cloud restait figé sur
   // sa dernière valeur réelle de streaming pendant tout le masque (~15-20s),
   // donc netDrain (cloud-sdRate) restait ~plat et masquait la vraie
   // accumulation locale en cours — d'où le rattrapage d'un coup observé une
   // fois la télémétrie réelle confirmée, au lieu d'une montée visible en direct.
-  if(st.awaitMode==='from') st.cloud=0;
+  if(st.pending.wifi.mode==='from') st.cloud=0;
   render();
 }
 
