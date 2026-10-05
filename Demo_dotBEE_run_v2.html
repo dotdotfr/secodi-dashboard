@@ -395,14 +395,30 @@ if(_p.toString()){
 
 const SSID1='#dotdot_wifi1', SSID2='#dotdot_wifi2', CIRC=2*Math.PI*55, GMAX=16000;
 const MAN_STOP=275, WOMAN_STOP=730;
+// Le #dot-BEE envoie un heartbeat toutes les 10 s et le backend ne garde que le
+// dernier. Sans heartbeat depuis 2,5 battements, la carte est hors réseau, même
+// si le broker n'a pas encore déclenché le LWT (1,5 × keepalive : 15 s en profil
+// démo, 45 s en nominal). Avant, la page attendait le LWT et affichait pendant
+// ce temps des débits/backlog figés d'avant la coupure comme s'ils étaient live.
+const STALE_MS = 25000;
+const HB_MS = 10000;
+const GLIDE_MS = 8000;      // durée d'un rattrapage glissé du compteur de file SD
+const GLIDE_TAU_MS = 2500;  // constante de temps du glissé (~96 % rattrapé en 8 s)
 
 let st={mode:'idleoff',connected:false,connecting:false,engineOn:false,activeWifi:null,
  ssidLabel:'hors portée',ssidClass:'neutral',cloud:0,sdRate:0,sdPercent:0,backlog:0,days:0,
  counterFrozen:false,frozenBacklog:0,sdFull:false,intraday:0,inWork:false,
  dispCloud:0,dispSd:0,_led:'#2E7D32',   // valeurs lissées + couleur courante pour la boucle d'animation
- dispBacklog:0,_lastBacklogRaw:null,backlogAnchor:0,backlogAnchorTs:0,reconnectGraceUntil:0,  // backlog : valeur affichée + ancre réelle (valeur, instant) + fenêtre de grâce reconnexion
+ dispBacklog:0,backlogAnchor:0,backlogAnchorTs:0,  // backlog : valeur affichée + ancre (valeur, instant)
+ _anchorFresh:false,_prevNet:null,_prevDraining:null,_lastFrame:0,  // détection des changements de débit (ré-ancrage)
  ssid:null,                         // SSID confirmé par la télémétrie (source de vérité)
- lastHbTs:0,lastOnline:null,        // dernier heartbeat appliqué (horodatage) + dernier état en ligne connu
+ lastHbTs:0,lastOnline:null,        // dernier heartbeat vu (last_seen_ts serveur) + dernier état en ligne connu
+ hbChangedAt:0,hbIsNew:false,       // instant (horloge page) où last_seen_ts a changé + « heartbeat neuf à appliquer »
+ lastCanRate:0,                     // dernier débit CAN non nul vu en direct (estimation hors réseau)
+ telemetryLost:false,               // fetch en échec : affichage figé, rien n'est extrapolé
+ offlineAnchored:false,cutClickAt:0, // ancrage de la coupure fait + instant du dernier clic « WiFi OFF »
+ glideUntil:0,                      // jusqu'à quand le compteur rattrape en glissé (pas de bond)
+ segFrom:null,segTo:0,segT0:0,      // déstockage : segment interpolé entre deux heartbeats réels
  // Masque optimiste après une commande manuelle (WiFi ou calculateur) : un slot par
  // canal de commande, chacun {..., deadline} le temps qu'il est en attente de
  // confirmation télémétrie, sinon null. Un seul mécanisme d'armement/expiration
@@ -528,13 +544,9 @@ function normalizeTelemetry(raw){
   let days;
   if(raw.days !== null && raw.days !== undefined){
     days = raw.days;
-  } else if(!online && (raw.mqtt_connected_iso || raw.mqtt_connected_ts != null)){
-    // Contrat dot-Lake : mqtt_connected_ts est en MILLISECONDES (epoch ms).
-    // Si un jour le backend expose mqtt_connected_iso (ISO-8601), on le préfère.
-    const ms = raw.mqtt_connected_iso ? Date.parse(raw.mqtt_connected_iso)
-                                      : raw.mqtt_connected_ts;
-    days = (Date.now() - ms) / 86400000;
   } else {
+    // Format dot-Lake : calculé dans poll() depuis le dernier heartbeat reçu
+    // (mqtt_connected_ts ne date la coupure qu'une fois le LWT arrivé).
     days = 0;
   }
 
@@ -571,7 +583,6 @@ function applyTelemetry(t){
   st.intraday=nowFrac();
   if(t && t.days!=null) st.days=t.days;
   if(!t || t.online===false){
-    const wasOnline = st.connected;
     st.connected=false; st.connecting=false; st.activeWifi=null; st.cloud=0; st.ssid=null;
     st.engineOn = !!(t && t.engine_on);
     st.ssidLabel='hors réseau'; st.ssidClass='disconnected';
@@ -579,39 +590,47 @@ function applyTelemetry(t){
     // aucun vidage n'est possible (rien à confirmer), donc animateGauges() doit
     // repasser en extrapolation de croissance (cf. logique unifiée plus bas).
     st.mode='storage';
+    if(t && t.reconnecting){
+      // Le broker voit la carte reconnectée mais aucun heartbeat neuf n'est encore
+      // arrivé : les champs du backend datent d'avant la coupure. On reste en
+      // stockage (rien de confirmé côté cloud) en l'affichant comme reconnexion.
+      st.connecting=true; st.ssidLabel='reconnexion…'; st.ssidClass='searching';
+    }
     if(t){ if(t.sd_percent!=null) st.sdPercent=t.sd_percent;
+           // Hors réseau, le backlog du backend est celui du DERNIER heartbeat : on ne
+           // ré-ancre que sur un heartbeat neuf (ou à la toute première lecture),
+           // sinon on extrapole depuis l'affichage courant (cf. animateGauges).
            if(t.backlog!=null){
-             // Garde-fou déconnexion (miroir du garde-fou reconnexion ci-dessous) :
-             // sur la toute première trame hors-ligne, le backend peut renvoyer un
-             // backlog pas encore à jour, artificiellement élevé par rapport au
-             // dernier vrai chiffre connu en streaming (même classe de problème
-             // que la lecture périmée à la reconnexion). On ignore UNE lecture qui
-             // bondirait anormalement juste à cet instant ; l'ancienne ancre
-             // continue d'extrapoler la croissance normalement depuis sa vraie
-             // valeur, au lieu d'un saut instantané. Le poll suivant (~2s) reprend
-             // une confiance normale, quelle que soit sa valeur.
-             const suspiciousJump = wasOnline && st.backlogAnchor < 50
-                                     && t.backlog > Math.max(500, st.backlogAnchor*5);
-             if(!suspiciousJump){ anchorBacklog(t.backlog); st.frozenBacklog=t.backlog; st.backlog=t.backlog; }
+             if(!st.offlineAnchored){
+               // Passage hors réseau (détecté par la fraîcheur, jusqu'à STALE_MS après
+               // la coupure réelle) ou page ouverte carte déjà hors réseau : la carte
+               // stocke depuis la coupure, pas depuis la détection. On repart du
+               // backlog du dernier heartbeat, daté de l'instant estimé de la
+               // coupure : milieu de l'intervalle suivant ce heartbeat, ou le clic
+               // « WiFi OFF » s'il est postérieur. Recul borné (au-delà, le débit
+               // figé ne vaut plus rien comme estimation).
+               const cutAt = Math.max(st.hbChangedAt + HB_MS/2, st.cutClickAt || 0);
+               const age = st.hbChangedAt ? Math.max(0, Math.min(Date.now() - cutAt, STALE_MS + HB_MS)) : 0;
+               st.backlogAnchor = t.backlog; st.backlogAnchorTs = performance.now() - age;
+               st._anchorFresh = true;
+               // Sans clic « WiFi OFF », la page découvre la coupure jusqu'à ~20 s
+               // après : l'écart est rattrapé en glissé plutôt qu'en un bond.
+               if(age > 1000) st.glideUntil = performance.now() + GLIDE_MS;
+             } else if(st.hbIsNew){
+               anchorBacklog(t.backlog);              // heartbeat neuf reçu malgré tout
+             }
+             st.frozenBacklog=t.backlog; st.backlog=t.backlog;
            }
-           // La file SD ne s'alimente que si le calculateur tourne : moteur éteint = CAN inactif = 0 tr/s,
-           // donc pas de croissance de la file (animateGauges prédit backlog += sdRate*elapsed hors ligne).
-           st.sdRate = gatedSdRate(t.engine_on, t.sd_rate); }
+           st.offlineAnchored = true;
+           // La file SD ne s'alimente que si le calculateur tourne : moteur éteint = CAN inactif = 0 tr/s.
+           // Moteur en marche : dernier débit CAN vu en direct si celui du heartbeat figé est nul
+           // (ex. calculateur allumé après la coupure, aucune trame n'a pu le confirmer).
+           const rate = (t.sd_rate||0) > 0.5 ? t.sd_rate : st.lastCanRate;
+           st.sdRate = gatedSdRate(t.engine_on, rate); }
+    st.hbIsNew=false;
     st.sdFull=st.sdPercent>=100;
     st.manShown=false; st.womanShown=false;
     render(); return;
-  }
-  const wasOffline = !st.connected;
-  if(wasOffline){
-    // Fenêtre de grâce reconnexion : juste après une reconnexion, le backend
-    // peut renvoyer un backlog déjà en baisse AVANT d'avoir signalé le mode
-    // catchup sur une trame explicite — l'ancre suit alors une vraie donnée qui
-    // baisse trop tôt (chute visible entre "connecté" et "déstockage" confirmé).
-    // Pendant cette fenêtre courte (le temps d'au moins un battement backend),
-    // animateGauges() verrouille l'affichage sur lui-même, pas juste sur l'ancre.
-    // Passé ce délai, on repasse au verrou normal (ancre) pour ne pas reproduire
-    // le bug inverse (jauge figée en régime stable, cf. correctif précédent).
-    st.reconnectGraceUntil = performance.now() + 12000;
   }
   st.connected=true; st.connecting=false; st.counterFrozen=false;
   st.ssid=t.ssid||null;
@@ -620,19 +639,16 @@ function applyTelemetry(t){
   st.engineOn=!!t.engine_on;
   st.cloud=t.cloud_rate||0; st.sdRate=gatedSdRate(t.engine_on, t.sd_rate);
   if(t.sd_percent!=null) st.sdPercent=t.sd_percent;
-  if(t.backlog!=null){
-    // Garde-fou reconnexion : a l'instant precis ou on repasse hors-reseau -> connecte,
-    // le backend peut renvoyer un backlog pas encore a jour (meme classe de probleme
-    // que le SSID perime resolu le 01/07 - cf. [[feedback-contracts-over-heuristics]]).
-    // On ignore UNE lecture qui chuterait brutalement vers ~0 juste a cet instant ;
-    // l'ancre precedente + le nouveau debit de vidage (deja appliques ci-dessus)
-    // continuent de faire converger l'affichage en douceur. Le poll suivant (~2s)
-    // reprend une confiance normale, quelle que soit sa valeur.
-    const suspicious = wasOffline && st.backlog>50 && t.backlog < st.backlog*0.1;
-    if(!suspicious){ anchorBacklog(t.backlog); st.backlog=t.backlog; }
-  }
+  // En ligne = heartbeat frais garanti par poll() (plus de lecture périmée à la
+  // reconnexion : tant qu'aucun heartbeat postérieur à la reconnexion n'est
+  // arrivé, poll() garde la carte en « reconnexion »). Les anciens garde-fous
+  // qui ignoraient une lecture « suspecte » rejetaient donc aussi des vraies.
   st.sdFull=st.sdPercent>=100;
-  st.mode = t.mode || ((st.cloud > (st.sdRate*1.2) && st.backlog>1) ? 'catchup' : 'depot');
+  // Mode AVANT l'ancre : anchorBacklog() mesure le débit de vidage selon le mode.
+  const bl = t.backlog!=null ? t.backlog : st.backlog;
+  st.mode = t.mode || ((st.cloud > (st.sdRate*1.2) && bl>1) ? 'catchup' : 'depot');
+  if(t.backlog!=null && st.hbIsNew){ anchorBacklog(t.backlog); st.backlog=t.backlog; }
+  st.hbIsNew=false; st.offlineAnchored=false; st.cutClickAt=0;
   if(st.activeWifi==='man'){ st.manShown=true; st.manImg='static'; st.manX=MAN_STOP; st.womanShown=false; }
   else if(st.activeWifi==='woman'){ st.womanShown=true; st.womanImg='lstatic'; st.womanX=WOMAN_STOP; st.manShown=false; }
   else { st.manShown=false; st.womanShown=false; }
@@ -642,7 +658,7 @@ function applyTelemetry(t){
 /* ---- polling ---- */
 let polling=false;
 async function poll(){
-  if(CFG_RUN.MOCK){ applyTelemetry(mockTick()); return; }
+  if(CFG_RUN.MOCK){ st.hbIsNew=true; applyTelemetry(mockTick()); return; }
   if(!CFG_RUN.TELEMETRY_URL){ status('TELEMETRY_URL non renseigné — aucune donnée à lire.'); return; }
   if(polling) return; polling=true;
   try{
@@ -650,25 +666,52 @@ async function poll(){
     if(!r.ok) throw new Error('HTTP '+r.status);
     const raw=await r.json();
     const nrm=normalizeTelemetry(raw);
-    // Filet calculateur : tant que la vraie trame n'a pas confirmé la cible (ou
-    // que le filet 30s n'a pas expiré), on ignore une lecture d'engine_on encore
-    // périmée — sinon un poll plus rapide que la bascule réelle du relais fait
-    // rebondir la jauge SD vers sa valeur d'avant-clic (gatedSdRate() la
-    // recalcule sur cet engine_on non confirmé) avant de re-redescendre au
-    // battement suivant.
+    if(st.telemetryLost){ st.telemetryLost=false; st.lastSig=null; }  // retour après échec : ré-appliquer
+
+    // ---- Fraîcheur du heartbeat ----
+    // L'âge est mesuré sur l'horloge de la page (instant où last_seen_ts a changé),
+    // pas en comparant avec l'horloge serveur : insensible au décalage d'horloge.
+    // Seule la toute première lecture estime l'âge depuis l'horodatage serveur.
+    const hb=Number(raw.last_seen_ts)||0;
+    if(hb && hb!==st.lastHbTs){
+      st.hbChangedAt = st.lastHbTs ? Date.now() : Math.min(Date.now(), hb);
+      st.lastHbTs = hb; st.hbIsNew = true;
+    }
+    const hbFresh = !!hb && (Date.now()-st.hbChangedAt) < STALE_MS;
+    // Reconnecté côté broker (message availability) mais pas encore de heartbeat
+    // postérieur : les autres champs sont ceux d'avant la coupure.
+    const connTs=Number(raw.mqtt_connected_ts)||0;
+    const awaitingHb = raw.mqtt_connected===true && connTs>hb;
+    if(raw.online===undefined){                     // format dot-Lake
+      const brokerOnline = nrm.online;
+      nrm.online = brokerOnline && hbFresh && !awaitingHb;
+      // « Reconnexion » seulement si le broker a vu une NOUVELLE connexion depuis le
+      // dernier heartbeat. Broker encore « connecté » + heartbeat périmé = session
+      // morte dont le LWT n'est pas encore tombé : c'est hors réseau.
+      nrm.reconnecting = brokerOnline && awaitingHb;
+      // Jours hors réseau : depuis le dernier heartbeat reçu.
+      if(raw.days==null) nrm.days = nrm.online ? 0 : Math.max(0,(Date.now()-st.hbChangedAt)/86400000);
+    }
+    if(nrm.online && (nrm.sd_rate||0)>0.5) st.lastCanRate=nrm.sd_rate;
+
+    // Masque calculateur : l'état choisi au clic tient jusqu'à ce qu'un heartbeat
+    // FRAIS reçu après le clic le confirme (ou, passé 30 s, le contredise). Hors
+    // réseau, aucune trame ne peut confirmer : le choix de l'opérateur reste
+    // affiché. Avant, le filet de 30 s ressortait l'engine_on figé d'avant la
+    // coupure et la file SD repartait (ou s'arrêtait) toute seule.
     if(st.pending.engine){
       const p=st.pending.engine;
-      if(nrm.engine_on===p.target || Date.now()>=p.deadline) clearPending('engine');
+      const confirmable = nrm.online && st.hbChangedAt>p.armedAt;
+      if(confirmable && (nrm.engine_on===p.target || Date.now()>=p.deadline)) clearPending('engine');
       else nrm.engine_on = p.target;
     }
-    const hb=Number(raw.last_seen_ts ?? raw.mqtt_connected_ts) || 0;  // heartbeat: last_seen_ts, avec repli sur mqtt_connected_ts
-    const online=!!(nrm&&nrm.online);
+    const online=!!nrm.online;
     const ssid = online ? (nrm.ssid||null) : null;
     if(raw.total_frames_cloud!=null){ st.totalFramesCloud=Number(raw.total_frames_cloud)||0; renderCloudTotal(); }
     const tm=new Date().toLocaleTimeString('fr-FR');
-    // Masque optimiste : le backend confirme le SSID immédiatement (message availability),
-    // donc on masque juste le court instant entre le clic et la propagation, puis on
-    // révèle dès que l'état (online, ssid) DIFFÈRE de celui d'avant la commande.
+    // Masque optimiste WiFi : on révèle dès que l'état (online, ssid) DIFFÈRE de
+    // celui d'avant la commande. `online` tient compte de la fraîcheur : une
+    // coupure est donc confirmée au plus tard STALE_MS après, sans attendre le LWT.
     if(st.pending.wifi){
       const p=st.pending.wifi;
       const changed = (online!==p.preOnline) || (ssid!==p.preSsid);
@@ -680,60 +723,35 @@ async function poll(){
         return;
       }
     }
-    // On applique dès qu'une valeur visible change, pas seulement quand le heartbeat
-    // bouge : sinon un backend qui stabilise last_seen_ts peut laisser la page figée.
+    // On applique dès qu'une valeur visible change (dont le passage frais -> périmé,
+    // via `online`), ou à chaque nouveau heartbeat.
     const sig = [
       online ? 1 : 0,
+      nrm.reconnecting ? 1 : 0,
       ssid || '',
       nrm.engine_on ? 1 : 0,
       nrm.cloud_rate || 0,
       nrm.sd_rate || 0,
       nrm.sd_percent || 0,
       nrm.backlog || 0,
-      nrm.days || 0,
+      Math.floor(nrm.days || 0),
       nrm.mode || '',
       hb,
       raw.total_frames_cloud || 0,
     ].join('|');
-    if(sig!==st.lastSig){
-      // DEBUG TEMPORAIRE (demandé — bond de backlog inexpliqué à la déconnexion) :
-      // capture la trame brute EXACTE au moment de la transition connecté->hors
-      // réseau, avant toute normalisation, pour identifier la source réelle du
-      // bond (ancre périmée ? confusion d'unité côté backend ? valeur par défaut ?).
-      // À retirer une fois la cause confirmée.
-      if(st.connected===true && online===false){
-        console.log('[DEBUG backlog déconnexion]', {
-          raw_backlog: raw.backlog,
-          raw_sd_pending_records: raw.sd_pending_records,
-          raw_sd_used_percent: raw.sd_used_percent,
-          raw_sd_percent: raw.sd_percent,
-          raw_can_rx_fps: raw.can_rx_fps,
-          raw_mqtt_tx_fps: raw.mqtt_tx_fps,
-          raw_connectivity_state: raw.connectivity_state,
-          nrm_backlog: nrm.backlog,
-          ancre_avant_transition: st.backlogAnchor,
-          raw_complet: raw,
-        });
-      }
-      st.lastSig=sig; st.lastOnline=online; if(hb>st.lastHbTs) st.lastHbTs=hb;
+    if(sig!==st.lastSig || st.hbIsNew){
+      st.lastSig=sig; st.lastOnline=online;
       applyTelemetry(nrm);
-      status('Télémétrie · '+tm);
+      status('Télémétrie · '+tm+(online?'':(nrm.reconnecting?' · reconnexion (heartbeat attendu)':' · dernier heartbeat il y a '+Math.round((Date.now()-st.hbChangedAt)/1000)+' s')));
     } else {
+      st.days = nrm.days || 0;
       status('Télémétrie · inchangé · '+tm);
     }
   }catch(e){
-    // DEBUG TEMPORAIRE (bond de backlog inexpliqué à la déconnexion) : ce chemin
-    // (fetch qui échoue completement, pas une reponse valide {online:false}) n'était
-    // PAS instrumenté — s'il se declenche pendant une vraie coupure, applyTelemetry(null)
-    // ne touche JAMAIS st.sdRate (le if(t){...} qui le remet a jour est entierement
-    // saute quand t est null) : le debit CAN reste fige sur sa DERNIERE vraie valeur
-    // (ex. ~140 tr/s) au lieu d'etre remis a 0 ou reevalue — animateGauges() continue
-    // alors d'extrapoler la croissance a ce debit fige, en silence, sans qu'aucune
-    // trame ne le confirme, jusqu'au retour d'un fetch reussi.
-    if(st.connected===true){
-      console.log('[DEBUG backlog déconnexion] fetch en échec — st.sdRate fige a', st.sdRate, 'erreur:', e.message);
-    }
-    applyTelemetry(null);
+    // Échec de lecture côté PAGE (wifi du PC, hoquet Railway) : ça ne dit rien de
+    // l'état du #dot-BEE. Avant, la carte passait « hors réseau » et la file SD se
+    // mettait à grossir artificiellement. On fige l'affichage à la place.
+    st.telemetryLost=true;
     status('Lecture télémétrie en échec ('+e.message+') — affichage figé.');
   }finally{ polling=false; }
 }
@@ -766,7 +784,11 @@ async function bench(cmd){
 }
 /* ---- boutons de contrôle manuel ----
    manual() = marque le bouton, arme l'attente d'un nouveau heartbeat (WiFi), envoie. */
-function manual(cmd){
+// Retour visuel immédiat + masque d'attente de confirmation pour UNE commande
+// banc. Partagé par les boutons manuels ET la séquence banc : avant, la séquence
+// envoyait les commandes sans masque — la page ne savait donc pas quand le WiFi
+// avait été coupé, et le compteur de file SD faisait un bond ~20 s plus tard.
+function armCommand(cmd){
   markManual(cmd);
   // Commande WiFi (1/2) : on masque l'ancien SSID jusqu'à atteindre la cible réelle.
   //  - X ON  -> on attend que la télémétrie montre exactement wifiX ;
@@ -794,11 +816,13 @@ function manual(cmd){
   if(!CFG_RUN.MOCK && ch==='3'){
     st.engineOn = on;
     if(!on) st.sdRate = 0;   // coupe la croissance de la file immédiatement (règle A)
-    armPending('engine',{target:on},30000);
+    // Hors réseau, aucune trame ne donnera le débit : on reprend le dernier vu en direct.
+    else if(!st.connected) st.sdRate = st.lastCanRate;
+    armPending('engine',{target:on,armedAt:Date.now()},30000);
     render();
   }
-  bench(cmd);
 }
+function manual(cmd){ armCommand(cmd); bench(cmd); }
 
 // Le bouton pressé passe actif et reste vert jusqu'à ce qu'on presse son opposé.
 function markManual(cmd){
@@ -822,7 +846,7 @@ function showConnectingMask(){
   // donc netDrain (cloud-sdRate) restait ~plat et masquait la vraie
   // accumulation locale en cours — d'où le rattrapage d'un coup observé une
   // fois la télémétrie réelle confirmée, au lieu d'une montée visible en direct.
-  if(st.pending.wifi.mode==='from') st.cloud=0;
+  if(st.pending.wifi.mode==='from'){ st.cloud=0; if(!st.cutClickAt) st.cutClickAt=Date.now(); }
   render();
 }
 
@@ -830,7 +854,7 @@ async function sendStep(i){
   document.querySelectorAll('.step-btn').forEach(b=>b.classList.toggle('playing',+b.dataset.step===i));
   const seq = i===1?['2off','1on'] : i===2?['1off'] : ['2on'];
   status('Étape '+i+' — commande banc : '+seq.join(' · ')+' …');
-  for(const c of seq){ if(!await bench(c)) return; }
+  for(const c of seq){ armCommand(c); if(!await bench(c)) return; }
   if(CFG_RUN.MOCK) mockStep(i);
   status('Étape '+i+' envoyée. En attente de la télémétrie réelle du #dot-BEE…');
 }
@@ -871,82 +895,79 @@ function mockTick(){
    Le matériel bat toutes les 10s (nominal), la page interrogeant toutes les 2s.
    Plutôt que d'accélérer la carte pour le confort visuel, on anime les jauges
    côté page : elles glissent vers la valeur cible (st.cloud / st.sdRate) à 60fps. */
-// Pose une nouvelle ANCRE (valeur réelle + instant) UNIQUEMENT quand le backend
-// renvoie une valeur différente (nouveau battement ~10s) — pas à chaque poll (2s)
-// qui répète la même. On n'écrit JAMAIS dispBacklog ici : la correction se fait
-// par lissage progressif dans la boucle (évite le rebond en fin de purge).
+// Pose une nouvelle ANCRE (valeur réelle + instant) à chaque heartbeat neuf, MÊME
+// si la valeur est identique à la précédente : un heartbeat qui répète « 0 » dit
+// « toujours 0 maintenant ». Avant, l'ancre n'était posée que sur changement de
+// valeur ; moteur arrêté ou backlog stable, son horodatage vieillissait de
+// plusieurs minutes, et au premier changement de débit (coupure WiFi : cloud -> 0)
+// l'extrapolation appliquait le nouveau débit à toute cette durée — d'où le bond
+// de la file SD à la déconnexion (ex. 140 tr/s × 5 min = +42 000 d'un coup).
+// On n'écrit JAMAIS dispBacklog ici : la correction se fait par lissage.
 function anchorBacklog(raw){
-  if(raw !== st._lastBacklogRaw){
-    st.backlogAnchor   = raw;
-    st.backlogAnchorTs = performance.now();
-    st._lastBacklogRaw = raw;
-  }
+  const now = performance.now();
+  // Déstockage : nouveau segment, de la valeur affichée vers la vraie valeur,
+  // parcouru en un intervalle de heartbeat (cf. animateGauges).
+  if(st.mode==='catchup'){ st.segFrom = st.dispBacklog; st.segTo = raw; st.segT0 = now; }
+  else st.segFrom = null;
+  st.backlogAnchor   = raw;
+  st.backlogAnchorTs = now;
+  st._anchorFresh    = true;
 }
 
 function animateGauges(now){
-  const k=0.15;                                  // facteur d'approche par frame
+  // Lissage indépendant de la fréquence d'écran : 0,15 par frame à 60 Hz.
+  const dt = st._lastFrame ? Math.min(now-st._lastFrame, 250) : 16.7;
+  st._lastFrame = now;
+  const k = 1 - Math.pow(0.85, dt/16.7);
+  const kGlide = 1 - Math.exp(-dt/GLIDE_TAU_MS);
   const ease=(disp,tgt)=> Math.abs(tgt-disp)<1 ? tgt : disp+(tgt-disp)*k;
   st.dispCloud=ease(st.dispCloud, st.cloud);
   st.dispSd   =ease(st.dispSd,    st.sdRate);
-  // Compteur de trames restantes — modèle unifié (règles produit) :
-  //   RÈGLE A : la file ne CROÎT que si le calculateur tourne. st.sdRate est déjà
-  //             gelé à 0 par applyTelemetry quand engine_on est faux (offline ET
-  //             online) — le débit net en hérite gratuitement.
-  //   RÈGLE B : elle continue d'évoluer par extrapolation tant qu'aucun VIDAGE n'a
-  //             été confirmé par le backend — y compris pendant la reconnexion
-  //             optimiste (masque UI « connexion à… »), qui ne touche JAMAIS
-  //             st.mode NI st.cloud/st.sdRate (ceux-ci ne changent que sur une
-  //             vraie trame télémétrie). Le seul déclencheur du vidage-confirmé
-  //             est st.mode==='catchup' : ancre et mode arrivent TOUJOURS ensemble
-  //             dans le même appel applyTelemetry() — pas de saut de continuité
-  //             possible.
-  //   RÉGIME STABLE (streaming direct, mode 'depot') : ni accumulation ni vidage
-  //             confirmé — le débit NET (cloud - sd) tient lieu d'extrapolation,
-  //             ce qui reste ~plat quand le cloud absorbe au même rythme que le
-  //             SD (pas de croissance artificielle en dehors du hors-réseau).
-  // Correction J60 (demandée J56/confirmée J59 — le verrou empêchait toute
-  // extrapolation même une fois 'catchup' confirmé, donnant un escalier saccadé
-  // au lieu d'un effondrement continu pendant une vraie purge) :
-  //   - AVANT confirmation ('catchup' pas encore reçu) : verrou intact, aucune
-  //     baisse anticipée, seule la croissance/le plat restent autorisés — borne
-  //     basse à l'ancre (Math.max(ancre, ...)).
-  //   - APRÈS confirmation : modèle J45 réactivé entre deux ancres — prédiction
-  //     continue au débit net, l'affichage chasse la prédiction (ease() plus
-  //     bas), atterrissage doux en fin de purge (Math.max(0, ...) décélère au
-  //     lieu de couper net), ré-ancrage silencieux à chaque battement réel
-  //     (anchorBacklog(), inchangé).
-  const netDrain = st.cloud - st.sdRate;   // >0 = vide, <0 = accumule
+  // Compteur de trames restantes :
+  //   RÈGLE A : la file ne CROÎT que si le calculateur tourne (st.sdRate est gelé
+  //             à 0 par applyTelemetry quand engine_on est faux).
+  //   RÈGLE B : entre deux heartbeats, extrapolation au débit NET (cloud - sd)
+  //             depuis la dernière ancre. Hors 'catchup', aucune baisse sous
+  //             l'ancre n'est anticipée ; en 'catchup' confirmé, extrapolation
+  //             pleine avec atterrissage doux à 0.
+  //   RÉ-ANCRAGE : quand le débit net ou le mode change SANS heartbeat neuf
+  //             (coupure WiFi, clic calculateur, passage frais -> périmé), on
+  //             repart de la valeur affichée, à l'instant présent : le nouveau
+  //             débit ne s'applique qu'à partir de maintenant, sans saut.
   const draining = st.mode === 'catchup';
-  const elapsed  = st.backlogAnchorTs ? (now - st.backlogAnchorTs)/1000 : 0;
+  const netDrain = st.cloud - st.sdRate;   // >0 = vide, <0 = accumule
+  if(st.telemetryLost){
+    // Télémétrie injoignable : rien à extrapoler, on fige le compteur.
+    st.backlogAnchor = st.dispBacklog; st.backlogAnchorTs = now;
+  } else if(st._prevNet!==null && !st._anchorFresh &&
+            (netDrain!==st._prevNet || draining!==st._prevDraining)){
+    st.backlogAnchor = Math.max(0, st.dispBacklog); st.backlogAnchorTs = now;
+  }
+  st._prevNet = netDrain; st._prevDraining = draining; st._anchorFresh = false;
+
+  const elapsed = st.backlogAnchorTs ? (now - st.backlogAnchorTs)/1000 : 0;
   const rawPredicted = st.backlogAnchor - netDrain*elapsed;
-  // Verrou : le plancher porte normalement sur l'ANCRE (dernière vraie valeur
-  // reçue, filtrée par le garde-fou anti-lecture-périmée dans applyTelemetry —
-  // voir "suspicious"), pas sur l'affichage courant en permanence — un plancher
-  // permanent sur l'affichage empêchait à tort toute correction descendante
-  // légitime hors 'catchup' (ex. régime stable où le backend confirme un résidu
-  // réel plus bas que l'estimation de croissance hors-réseau) — la jauge restait
-  // figée sur une ancienne valeur trop haute au lieu de suivre la vraie donnée.
-  //
-  // EXCEPTION bornée dans le temps : juste après une reconnexion (fenêtre de
-  // grâce posée dans applyTelemetry), le backend peut renvoyer un backlog déjà
-  // en baisse avant d'avoir signalé 'catchup' — l'ancre suit alors une vraie
-  // donnée qui descend trop tôt. Pendant cette fenêtre courte, le plancher passe
-  // sur l'affichage courant (verrou strict). Relâchement au PREMIER des deux
-  // événements — confirmation de 'catchup' OU expiration des 12s — jamais
-  // seulement l'expiration : `draining` est la condition externe du ternaire,
-  // donc dès que mode==='catchup' on saute directement dans la branche
-  // d'extrapolation pleine, sans jamais consulter inReconnectGrace. Pas de trou
-  // d'affichage figé entre une confirmation précoce et la fin du minuteur.
-  const inReconnectGrace = now < (st.reconnectGraceUntil || 0);
-  const predicted = draining
-    ? Math.max(0, rawPredicted)                                                        // vidage confirmé : extrapolation pleine + atterrissage doux
-    : Math.max(inReconnectGrace ? st.dispBacklog : st.backlogAnchor, rawPredicted);     // hors catchup : suit l'ancre (verrou strict temporaire à la reconnexion)
-  // L'affichage GLISSE vers la prédiction au lieu de la suivre sèchement :
-  //    - au ré-ancrage (battement), la correction de dérive est absorbée en douceur
-  //      au lieu d'un saut sec (garde-fou) ;
-  //    - un saut de valeur confirmée reste visible en ~1s (k=0.15), pas instantané,
-  //      sans jamais anticiper une baisse non confirmée.
-  st.dispBacklog = ease(st.dispBacklog, predicted);
+  const predicted = st.telemetryLost ? st.dispBacklog
+    : draining ? Math.max(0, rawPredicted)                 // vidage confirmé : extrapolation pleine + atterrissage doux
+    : Math.max(st.backlogAnchor, rawPredicted);            // hors catchup : jamais sous l'ancre
+  if(draining && !st.telemetryLost){
+    // DÉSTOCKAGE : interpolation entre heartbeats RÉELS, pas d'extrapolation. Le
+    // flush express avance par blocs de 5 000 trames entrecoupés de pauses
+    // (jusqu'à 30 s entre deux cycles) : toute prédiction au débit annoncé
+    // tombait à 0 avant le heartbeat suivant puis remontait (0 -> saut -> 0),
+    // et une pause (débit cloud 0, CAN actif) faisait même REMONTER le compteur.
+    // Ici l'affichage parcourt, en un intervalle de heartbeat, le chemin entre la
+    // valeur affichée et la dernière vraie valeur : jamais en dessous de la
+    // réalité, jamais de remontée sans vraie donnée. Coût : ≤ 10 s de retard.
+    if(st.segFrom===null){ st.segFrom = st.dispBacklog; st.segTo = st.backlogAnchor; st.segT0 = now; }
+    const f = Math.min(1, (now - st.segT0)/HB_MS);
+    st.dispBacklog = st.segFrom + (st.segTo - st.segFrom)*f;
+  } else {
+    // Rattrapage glissé après une coupure découverte en retard (pas de bond).
+    const glide = now < st.glideUntil;
+    st.dispBacklog = glide ? st.dispBacklog + (predicted - st.dispBacklog)*kGlide
+                           : ease(st.dispBacklog, predicted);
+  }
   document.getElementById('frames-val').textContent = fmt(Math.round(st.dispBacklog));
   const led=st._led;
   const cA=document.getElementById('gauge-cloud');
