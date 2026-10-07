@@ -2987,12 +2987,20 @@
     // current_ssid ne sert qu'à l'affichage du nom du routeur : son absence
     // ponctuelle dans une trame ne doit pas faire passer en "hors réseau" si
     // la connectivité MQTT est bonne.
-    const connected = (data?.mqtt_connected !== null && data?.mqtt_connected !== undefined)
+    // mqtt_connected seul ne suffit pas : il ne passe a false qu'au LWT du broker
+    // (1,5 x keepalive, jusqu'a 45 s), et repasse a true des la reconnexion alors
+    // que les autres champs datent encore du heartbeat d'avant la coupure. On
+    // exige donc aussi un heartbeat frais, et posterieur a la derniere connexion.
+    const brokerOnline = (data?.mqtt_connected !== null && data?.mqtt_connected !== undefined)
       ? data.mqtt_connected
-      : !isStale;
+      : true;
+    const connTs = data?.mqtt_connected_ts;
+    const awaitingHeartbeat = brokerOnline && connTs && lastSeenTs && connTs > lastSeenTs;
+    const connected = brokerOnline && !isStale && !awaitingHeartbeat;
     const hasSsid = data?.current_ssid !== null && data?.current_ssid !== undefined && data?.current_ssid !== '';
-    const feRate = Math.round(data?.fe_rps || 0);
-    const cloudRate = Math.round((data?.mqtt_tx_fps || 0) + feRate);
+    // Hors ligne, les debits du dernier heartbeat sont perimes : rien ne part.
+    const feRate = connected ? Math.round(data?.fe_rps || 0) : 0;
+    const cloudRate = connected ? Math.round((data?.mqtt_tx_fps || 0) + feRate) : 0;
     const sdPending = data?.sd_pending_records || 0;
     const sdPercent = data?.sd_used_percent || 0;
 
@@ -3046,12 +3054,16 @@
 
     // 3. Jauges de débit / file d'attente
     const circumference = 2 * Math.PI * 55; // r=55
-    const maxRate = 300; // pleine échelle de la jauge cloud (trames/s)
-    const maxPending = 300; // pleine échelle de la jauge SD (trames en attente)
+    // Echelles logarithmiques : les valeurs vont de quelques unites a ~12 000 tr/s
+    // (flush express) et ~300 000 trames en attente (au-dela du seuil de 250 000).
+    // Une echelle lineaire a 300 saturait les deux jauges des le moindre destockage.
+    const maxRate = 15000;    // pleine échelle de la jauge cloud (trames/s)
+    const maxPending = 300000; // pleine échelle de la jauge SD (trames en attente)
+    const logRatio = (v, max) => v <= 0 ? 0 : Math.min(Math.log10(1 + v) / Math.log10(1 + max), 1);
 
     // Jauge cloud (déstockage total = mqtt_tx_fps + fe_rps)
     const cloudArc = document.getElementById('gauge-cloud');
-    const ratioC = Math.min(cloudRate / maxRate, 1);
+    const ratioC = logRatio(cloudRate, maxRate);
     cloudArc.setAttribute('stroke-dashoffset', circumference * (1 - ratioC));
     cloudArc.classList.toggle('active', cloudRate > 0);
     cloudArc.classList.toggle('inactive', cloudRate === 0);
@@ -3063,7 +3075,7 @@
 
     // Jauge SD (sd_pending_records : trames en attente de transmission)
     const sdArc = document.getElementById('gauge-sd');
-    const ratioS = Math.min(sdPending / maxPending, 1);
+    const ratioS = logRatio(sdPending, maxPending);
     sdArc.setAttribute('stroke-dashoffset', circumference * (1 - ratioS));
     sdArc.classList.toggle('active', state === 'catchup' || state === 'flush');
     sdArc.classList.toggle('inactive', state !== 'catchup' && state !== 'flush');
