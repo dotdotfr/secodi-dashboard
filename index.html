@@ -1681,6 +1681,8 @@
                 <circle cx="295" cy="335" r="3.5" fill="white"/>
                 <text class="map-pin-label" x="306" y="339">Avignon</text>
               </g>
+              <!-- Pins positionnes par le GPS reel des #dot-BEE (cf. updateGpsPins) -->
+              <g id="gps-pins"></g>
             </svg>
             <div class="map-legend">
               <div class="lg-item"><span class="lg-dot" style="background:var(--ok)"></span>En service</div>
@@ -2698,7 +2700,9 @@
     if (infoBlocks.length >= 4) {
       infoBlocks[0].textContent = meta.motor;
       infoBlocks[1].textContent = meta.hours;
-      infoBlocks[2].textContent = meta.loc;
+      // Localisation : position GPS reelle si connue, sinon la valeur declaree.
+      const gps = deviceGps[deviceId];
+      infoBlocks[2].textContent = gps ? fmtGps(gps.lat, gps.lon) : meta.loc;
       infoBlocks[3].textContent = liveData && liveData.last_seen ? `il y a ${timeSince(liveData.last_seen)}` : "Hors-ligne";
     }
 
@@ -3095,6 +3099,11 @@
     // 6. Position GPS (lat/lon issues du dernier heartbeat)
     const gpsEl = document.getElementById('conn-gps-position');
     if (data?.gps_fix && data?.latitude != null && data?.longitude != null) {
+      if (currentDeviceId) {
+        deviceGps[currentDeviceId] = { lat: data.latitude, lon: data.longitude };
+        const locEl = document.querySelectorAll('.engin-header .info-block .info-value')[2];
+        if (locEl) locEl.textContent = fmtGps(data.latitude, data.longitude);
+      }
       const lat = data.latitude.toFixed(5);
       const lon = data.longitude.toFixed(5);
       gpsEl.innerHTML = `<a href="https://www.google.com/maps?q=${lat},${lon}" target="_blank" rel="noopener">${lat}, ${lon}</a>`;
@@ -3352,6 +3361,62 @@
     return "#9CA3AF";
   }
 
+  // --- POSITION GPS REELLE DES ENGINS ---
+  // Projection du fond de carte (viewBox 420x460) : equirectangulaire, calee sur
+  // les points extremes du contour de la France (pointe de Corsen -4.795, Lauterbourg
+  // 8.23, Bray-Dunes 51.09, Pyrenees 42.33). Le rapport des echelles (30.34/44.02 =
+  // 0.689) vaut cos(46.5 deg), la latitude moyenne : la projection est coherente.
+  const deviceGps = {};   // deviceId -> { lat, lon } (dernier fix connu)
+  function geoToMap(lat, lon) {
+    return { x: 12.5 + (lon + 4.795) * 30.34, y: 37.4 + (51.09 - lat) * 44.02 };
+  }
+  function fmtGps(lat, lon) {
+    return `${Math.abs(lat).toFixed(4)}° ${lat >= 0 ? 'N' : 'S'} · ${Math.abs(lon).toFixed(4)}° ${lon >= 0 ? 'E' : 'O'}`;
+  }
+
+  // Place sur la carte les engins qui ont un fix GPS. /devices ne renvoie pas les
+  // positions : on lit le statut admin de chaque engin (le meme que la fiche).
+  async function updateGpsPins() {
+    const layer = document.getElementById('gps-pins');
+    if (!layer) return;
+    const results = await Promise.allSettled(globalFleetData.map(async device => {
+      const res = await adminFetch(`${API_URL}/admin/devices/${device.device_id}/status`);
+      if (!res.ok) return null;
+      const st = await res.json();
+      if (!st?.gps_fix || st.latitude == null || st.longitude == null) return null;
+      deviceGps[device.device_id] = { lat: st.latitude, lon: st.longitude };
+      return { device, lat: st.latitude, lon: st.longitude };
+    }));
+    const NS = 'http://www.w3.org/2000/svg';
+    layer.replaceChildren();
+    results.forEach(r => {
+      if (r.status !== 'fulfilled' || !r.value) return;
+      const { device, lat, lon } = r.value;
+      const { x, y } = geoToMap(lat, lon);
+      if (x < 0 || x > 420 || y < 0 || y > 460) {
+        console.info(`Position hors carte pour ${device.device_id} : ${lat}, ${lon}`);
+        return;
+      }
+      const g = document.createElementNS(NS, 'g');
+      g.setAttribute('class', 'map-pin');
+      g.addEventListener('click', () => selectAndGoToFiche(device.device_id));
+      const title = document.createElementNS(NS, 'title');
+      title.textContent = `${device.device_id} — ${fmtGps(lat, lon)}`;
+      const bg = document.createElementNS(NS, 'circle');
+      bg.setAttribute('class', 'map-pin-bg');
+      bg.setAttribute('cx', x); bg.setAttribute('cy', y); bg.setAttribute('r', 10);
+      bg.setAttribute('fill', getStatusColor(device.status));
+      const dot = document.createElementNS(NS, 'circle');
+      dot.setAttribute('cx', x); dot.setAttribute('cy', y); dot.setAttribute('r', 4); dot.setAttribute('fill', 'white');
+      const label = document.createElementNS(NS, 'text');
+      label.setAttribute('class', 'map-pin-label');
+      label.setAttribute('x', x + 13); label.setAttribute('y', y + 4);
+      label.textContent = device.device_id.replace(/^sentinel-/, '');
+      g.append(title, bg, dot, label);
+      layer.appendChild(g);
+    });
+  }
+
   async function loadVueParc() {
     try {
       const response = await adminFetch(`${API_URL}/devices`);
@@ -3390,6 +3455,8 @@
         }
       });
       
+      updateGpsPins().catch(err => console.warn('Positions GPS :', err));
+
       if (currentDeviceId && document.getElementById('view-fiche').classList.contains('active')) {
           const meta = ENGINE_METADATA[currentDeviceId] || { name: "Engin Inconnu" };
           const infoBlocks = document.querySelectorAll('.engin-header .info-block .info-value');
