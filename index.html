@@ -1700,7 +1700,7 @@
                 <circle cx="295" cy="335" r="3.5" fill="white"/>
                 <text class="map-pin-label" x="306" y="339">Avignon</text>
               </g>
-              <!-- Pins positionnes par le GPS reel des #dot-BEE (cf. updateGpsPins) -->
+              <!-- Pins positionnes par le GPS reel des #dot-BEE (cf. refreshFleetLive) -->
               <g id="gps-pins"></g>
             </svg>
             </div>
@@ -2680,6 +2680,7 @@
   const DTC_PAGE_SIZE = 50;
   let dtcRows = [];     // défauts enrichis + triés (récents d'abord)
   let dtcPage = 0;      // page courante (0-indexée)
+  let dtcDeviceId = null; // engin des defauts affiches (page conservee au rafraichissement)
 
   // --- NAVIGATION ---
   function showView(view) {
@@ -2998,31 +2999,49 @@
 
   // --- CHARGEMENT TÉLÉMÉTRIE DYNAMIQUE (DOUBLE APPEL API) ---
   // --- SECTION CONNECTIVITE (Wi-Fi / cloud / SD) ---
+  // Fraicheur des heartbeats par engin, mesuree en temps du NAVIGATEUR au moment
+  // ou uptime_s change. uptime_s n'est ecrit QUE par le heartbeat du sentinel ;
+  // last_seen_ts, lui, est aussi reecrit par d'autres routes de l'API (ex.
+  // telemetry/current, avec l'horodatage de la derniere donnee InfluxDB, vieille
+  // de plusieurs minutes pendant un rattrapage) : s'y fier faisait afficher
+  // "hors reseau" alors que le sentinel envoyait bien ses donnees. Mesurer cote
+  // navigateur rend aussi insensible a un ecart d'horloge PC / serveur.
+  const hbTrack = {};
+  // Regle UNIQUE de connexion d'un engin (fiche ET vue parc) :
+  //  - heartbeat recent (< 30 s = 3 x 10 s), mesure au changement de uptime_s ;
+  //  - et pas de message "offline" (LWT) plus recent que ce heartbeat. Un heartbeat
+  //    recu APRES un "offline" l'emporte : un indicateur mqtt_connected reste
+  //    bloque a false ne doit pas masquer un #dot-BEE qui envoie ses donnees.
+  function deviceConnected(deviceId, data) {
+    const now = Date.now();
+    const up = data?.uptime_s;
+    let t = hbTrack[deviceId];
+    if (!t) {
+      // Premiere lecture : age estime une seule fois depuis l'horodatage serveur.
+      const age = data?.last_seen_ts ? Math.max(0, now - data.last_seen_ts) : Infinity;
+      t = hbTrack[deviceId] = { uptime: up, seenAt: now - age, offlineAt: null, lastMqtt: undefined };
+    } else if (up !== null && up !== undefined && up !== t.uptime) {
+      t.uptime = up;
+      t.seenAt = now;   // nouveau heartbeat
+    }
+    if (up === null || up === undefined) {
+      // Pas d'uptime (ancien firmware) : repli sur l'horodatage serveur.
+      t.seenAt = data?.last_seen_ts ? now - Math.max(0, now - data.last_seen_ts) : -Infinity;
+    }
+    if (data?.mqtt_connected === false && t.lastMqtt !== false) t.offlineAt = now;
+    t.lastMqtt = data?.mqtt_connected;
+    const fresh = now - t.seenAt <= 30000;
+    const offline = data?.mqtt_connected === false && !(t.offlineAt !== null && t.seenAt > t.offlineAt);
+    return fresh && !offline;
+  }
+
   function updateConnectivity(data) {
-    // Connectivité = état de la session MQTT elle-même (LWT / retained "online"
-    // publié par le firmware), independant du flux applicatif. mqtt_connected
-    // vaut true/false dès qu'un message d'availability a ete reçu.
-    //
-    // Fallback (mqtt_connected absent, ex: avant deploiement firmware/API) :
-    // on retombe sur la fraicheur du dernier heartbeat (last_seen_ts < 30s,
-    // soit 3x l'intervalle nominal de 10s).
-    const STALE_THRESHOLD_MS = 30000;
-    const lastSeenTs = data?.last_seen_ts;
-    const isStale = !lastSeenTs || (Date.now() - lastSeenTs) > STALE_THRESHOLD_MS;
+    // Connexion : regle commune deviceConnected() (heartbeat recent + LWT).
 
     // current_ssid ne sert qu'à l'affichage du nom du routeur : son absence
     // ponctuelle dans une trame ne doit pas faire passer en "hors réseau" si
     // la connectivité MQTT est bonne.
-    // mqtt_connected seul ne suffit pas : il ne passe a false qu'au LWT du broker
-    // (1,5 x keepalive, jusqu'a 45 s), et repasse a true des la reconnexion alors
-    // que les autres champs datent encore du heartbeat d'avant la coupure. On
-    // exige donc aussi un heartbeat frais, et posterieur a la derniere connexion.
-    const brokerOnline = (data?.mqtt_connected !== null && data?.mqtt_connected !== undefined)
-      ? data.mqtt_connected
-      : true;
-    const connTs = data?.mqtt_connected_ts;
-    const awaitingHeartbeat = brokerOnline && connTs && lastSeenTs && connTs > lastSeenTs;
-    const connected = brokerOnline && !isStale && !awaitingHeartbeat;
+    const connected = deviceConnected(currentDeviceId, data);
     const hasSsid = data?.current_ssid !== null && data?.current_ssid !== undefined && data?.current_ssid !== '';
     // Hors ligne, les debits du dernier heartbeat sont perimes : rien ne part.
     const feRate = connected ? Math.round(data?.fe_rps || 0) : 0;
@@ -3134,7 +3153,22 @@
     }
   }
 
+  // Statut / heartbeat (Wi-Fi, cloud, SD) : lu independamment de la telemetrie.
+  // Un echec de lecture (API lente, reseau du PC) ne dit rien de l'etat du
+  // #dot-BEE : on garde l'affichage tel quel au lieu de passer en "hors reseau".
+  async function loadDeviceStatus(deviceId) {
+    try {
+      const statusResponse = await adminFetch(`${API_URL}/admin/devices/${deviceId}/status`);
+      if (statusResponse.ok && currentDeviceId === deviceId) {
+        updateConnectivity(await statusResponse.json());
+      }
+    } catch (err) {
+      console.warn(`Statut indisponible pour ${deviceId} (affichage conserve) :`, err);
+    }
+  }
+
   async function loadDeviceTelemetry(deviceId) {
+    loadDeviceStatus(deviceId);
     try {
       // 1. On interroge les données en temps réel pour les jauges
       const response = await adminFetch(`${API_URL}/devices/${deviceId}/telemetry/current`);
@@ -3144,25 +3178,16 @@
       const fieldToGauge = {
         battery_voltage: { spn: 168, min: 0, max: 36, decimals: 1 },
         coolant_temp: { spn: 110, min: 0, max: 150, decimals: 0 },
-        oil_pressure: { spn: 100, min: 0, max: 8, decimals: 1 },
+        // Le worker stocke la pression d'huile en kPa (SPN 100) ; la jauge est en bar.
+        oil_pressure: { spn: 100, min: 0, max: 8, decimals: 1, scale: 0.01 },
         engine_speed: { spn: 190, min: 0, max: 3500, decimals: 0 }
       };
 
       Object.entries(fieldToGauge).forEach(([field, gauge]) => {
-        setGaugeValue(gauge.spn, telemetry?.[field], gauge.min, gauge.max, gauge.decimals);
+        const raw = telemetry?.[field];
+        const value = (raw === null || raw === undefined) ? raw : raw * (gauge.scale || 1);
+        setGaugeValue(gauge.spn, value, gauge.min, gauge.max, gauge.decimals);
       });
-
-      // 1bis. On interroge le statut/heartbeat (Wi-Fi / cloud / SD)
-      try {
-        const statusResponse = await adminFetch(`${API_URL}/admin/devices/${deviceId}/status`);
-        if (statusResponse.ok) {
-          updateConnectivity(await statusResponse.json());
-        } else {
-          updateConnectivity({ current_ssid: null, mqtt_tx_fps: 0, sd_pending_records: 0, sd_used_percent: 0 });
-        }
-      } catch (err) {
-        updateConnectivity({ current_ssid: null, mqtt_tx_fps: 0, sd_pending_records: 0, sd_used_percent: 0 });
-      }
 
       // 2. On interroge l'historique sur 7 jours pour le graphique
       const meta = ENGINE_METADATA[deviceId] || { slope: 0 };
@@ -3179,9 +3204,10 @@
       }
 
     } catch (error) {
+      // Echec de la telemetrie seulement : le bloc connectivite est gere a part
+      // (loadDeviceStatus) et n'est plus force a "hors reseau" ici.
       console.warn(`Impossible de charger la télémétrie pour ${deviceId}:`, error);
       setGaugeValue(168, null); setGaugeValue(110, null); setGaugeValue(100, null); setGaugeValue(190, null);
-      updateConnectivity({ current_ssid: null, mqtt_tx_fps: 0, sd_pending_records: 0, sd_used_percent: 0 });
       const meta = ENGINE_METADATA[deviceId] || { slope: 0 };
       updateBatteryChart(meta, []);
     }
@@ -3246,6 +3272,11 @@
       const data = await response.json();
 
       const dtcs = Array.isArray(data.dtcs) ? data.dtcs : [];
+      // Titre de la vue avec l'engin reellement affiche (etait fige sur secodi-demo-02).
+      const dm1Title = document.querySelector('#view-dm1 .pt-text');
+      if (dm1Title) dm1Title.textContent = `MONITORING \\ HISTORIQUE DES DÉFAUTS — ${deviceId}`;
+      const keepPage = dtcDeviceId === deviceId;
+      dtcDeviceId = deviceId;
 
       if (dtcs.length === 0) {
         dtcRows = [];
@@ -3270,7 +3301,7 @@
         .map(d => normalizeDTC(d, knownMap))
         .filter(Boolean)
         .sort((a, b) => (b.last_ts || b.ts || 0) - (a.last_ts || a.ts || 0));
-      dtcPage = 0;
+      if (!keepPage) dtcPage = 0;
 
       if (dtcRows.length === 0) {
         tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--jt-text-soft);">Aucun défaut actif (trames DM1 vides uniquement).</td></tr>`;
@@ -3282,10 +3313,12 @@
       renderDTCPage();
       updateDM1Header(dtcRows);
 
-      // Badge rouge de la sidebar = nombre de défauts actifs.
+      // Badges (barre laterale + onglet de la fiche) = nombre de défauts actifs.
       const actifsCount = dtcRows.filter(d => (d.status || '').toLowerCase() === 'actif').length;
       const badge = document.querySelector('.sidebar-item[data-view="dm1"] .si-badge');
       if (badge) badge.textContent = actifsCount;
+      const tabBadge = document.querySelector('.tab .tab-badge');
+      if (tabBadge) tabBadge.textContent = actifsCount;
 
     } catch (error) {
       console.warn(`Impossible de charger les DTC pour ${deviceId}:`, error);
@@ -3294,6 +3327,25 @@
       tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--critical);">Erreur lors du chargement des défauts.</td></tr>`;
       renderDTCPagination();
     }
+  }
+
+  // Periode d'un defaut, en heure LOCALE du navigateur. date_str de l'API est
+  // calcule cote serveur (Railway, UTC) : 2 h de decalage avec l'heure francaise.
+  // Debut, puis fin et duree si le defaut a dure plus d'une seconde.
+  function fmtDtcPeriod(dtc) {
+    if (!dtc.ts) return dtc.date_str || '—';
+    const start = new Date(dtc.ts);
+    const day = start.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const hms = d => d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    let txt = `${day} ${hms(start)}`;
+    const dur = Math.round(((dtc.last_ts || dtc.ts) - dtc.ts) / 1000);
+    if (dur >= 1) {
+      const end = new Date(dtc.last_ts);
+      const durTxt = dur < 60 ? `${dur} s` : dur < 3600 ? `${Math.floor(dur / 60)} min ${dur % 60} s`
+                   : `${Math.floor(dur / 3600)} h ${Math.floor((dur % 3600) / 60)} min`;
+      txt += ` → ${hms(end)} (${durTxt})`;
+    }
+    return txt;
   }
 
   // --- RENDU D'UNE PAGE DE DÉFAUTS ---
@@ -3316,7 +3368,7 @@
 
       const codeTitle = dtc.raw_spn ? ` title="Valeur brute concaténée : ${dtc.raw_spn} (= SPN×32+FMI)"` : '';
       tr.innerHTML = `
-        <td class="dm1-date">${dtc.date_str}</td>
+        <td class="dm1-date">${fmtDtcPeriod(dtc)}</td>
         <td class="dm1-code"${codeTitle}>${dtc.spn} / ${dtc.fmi}</td>
         <td><span class="dm1-lamp ${lampClass}"><span class="lamp-icon"></span>${isActif ? 'Rouge' : 'Off'}</span></td>
         <td>${dtc.libelle}</td>
@@ -3420,19 +3472,37 @@
     });
   }
 
-  // Place sur la carte les engins qui ont un fix GPS. /devices ne renvoie pas les
-  // positions : on lit le statut admin de chaque engin (le meme que la fiche).
-  async function updateGpsPins() {
+  // Vue parc "live" : /devices ne renvoie ni la connexion ni la position (son
+  // statut OK/Warning/Critical ne vient que des dernieres valeurs InfluxDB, et un
+  // engin deconnecte y reste "OK"). On lit donc le statut admin de chaque engin
+  // (le meme que la fiche) : etat de connexion -> liste, compteurs et carte ;
+  // position GPS -> carte. Un engin deconnecte passe en gris "Hors-ligne".
+  const fleetView = {};   // deviceId -> statut affiche ("Offline" si deconnecte)
+  async function refreshFleetLive() {
     const layer = document.getElementById('gps-pins');
     if (!layer) return;
     const results = await Promise.allSettled(globalFleetData.map(async device => {
       const res = await adminFetch(`${API_URL}/admin/devices/${device.device_id}/status`);
       if (!res.ok) return null;
       const st = await res.json();
-      if (!st?.gps_fix || st.latitude == null || st.longitude == null) return null;
+      const view = deviceConnected(device.device_id, st) ? device.status : 'Offline';
+      fleetView[device.device_id] = view;
+      const shown = { ...device, status: view };
+      if (!st?.gps_fix || st.latitude == null || st.longitude == null) return { device: shown, noGps: true };
       deviceGps[device.device_id] = { lat: st.latitude, lon: st.longitude };
-      return { device, lat: st.latitude, lon: st.longitude };
+      return { device: shown, lat: st.latitude, lon: st.longitude };
     }));
+
+    // Liste et compteurs avec l'etat reel (connexion comprise).
+    document.querySelectorAll('#device-list-container .device-row').forEach(row => {
+      const view = fleetView[row.dataset.deviceId];
+      const dot = row.querySelector('.status-pastille');
+      if (view && dot) dot.className = `status-pastille ${getStatusClass(view)}`;
+    });
+    const views = globalFleetData.map(d => fleetView[d.device_id] || d.status);
+    document.getElementById('stat-ok').textContent = views.filter(v => v === 'OK').length;
+    document.getElementById('stat-warn').textContent = views.filter(v => v === 'Warning').length;
+    document.getElementById('stat-critical').textContent = views.filter(v => v === 'Critical').length;
     const NS = 'http://www.w3.org/2000/svg';
     layer.replaceChildren();
     // (la liste de choix eventuellement ouverte reste ouverte : la vue se
@@ -3441,7 +3511,7 @@
     // Regroupe les engins dont les points se chevaucheraient (< 18 px ~ 10 km a
     // cette echelle) : un seul point cliquable par groupe, au barycentre.
     const placed = results
-      .filter(r => r.status === 'fulfilled' && r.value)
+      .filter(r => r.status === 'fulfilled' && r.value && !r.value.noGps)
       .map(r => ({ ...r.value, ...geoToMap(r.value.lat, r.value.lon) }))
       .filter(p => {
         const inside = p.x >= 0 && p.x <= 420 && p.y >= 0 && p.y <= 460;
@@ -3546,20 +3616,24 @@
       globalFleetData = await response.json(); 
       
       document.getElementById('stat-total').textContent = globalFleetData.length;
-      document.getElementById('stat-ok').textContent = globalFleetData.filter(d => d.status === 'OK').length;
-      document.getElementById('stat-warn').textContent = globalFleetData.filter(d => d.status === 'Warning').length;
-      document.getElementById('stat-critical').textContent = globalFleetData.filter(d => d.status === 'Critical').length;
+      // Compteurs avec le dernier etat live connu (connexion comprise) : evite
+      // qu'ils basculent a chaque rafraichissement avant refreshFleetLive().
+      const liveViews = globalFleetData.map(d => fleetView[d.device_id] || d.status);
+      document.getElementById('stat-ok').textContent = liveViews.filter(v => v === 'OK').length;
+      document.getElementById('stat-warn').textContent = liveViews.filter(v => v === 'Warning').length;
+      document.getElementById('stat-critical').textContent = liveViews.filter(v => v === 'Critical').length;
 
       const listContainer = document.getElementById('device-list-container');
       listContainer.innerHTML = ""; 
 
       globalFleetData.forEach(device => {
-        const cssClass = getStatusClass(device.status);
+        const cssClass = getStatusClass(fleetView[device.device_id] || device.status);
         const lastSeenStr = timeSince(device.last_seen);
         
         const row = document.createElement('div');
         row.className = `device-row ${device.device_id === currentDeviceId ? 'selected' : ''}`;
         row.setAttribute('onclick', `selectAndGoToFiche('${device.device_id}')`);
+        row.dataset.deviceId = device.device_id;
         
         row.innerHTML = `
           <span class="status-pastille ${cssClass}"></span>
@@ -3577,7 +3651,7 @@
         }
       });
       
-      updateGpsPins().catch(err => console.warn('Positions GPS :', err));
+      refreshFleetLive().catch(err => console.warn('Etat live du parc :', err));
 
       if (currentDeviceId && document.getElementById('view-fiche').classList.contains('active')) {
           const meta = ENGINE_METADATA[currentDeviceId] || { name: "Engin Inconnu" };
@@ -3608,9 +3682,13 @@
       setInterval(loadVueParc, 10000);
 
       setInterval(() => {
-          if (currentDeviceId && document.getElementById('view-fiche').classList.contains('active')) {
-              loadDeviceTelemetry(currentDeviceId);
-          }
+          if (!currentDeviceId) return;
+          const ficheActive = document.getElementById('view-fiche').classList.contains('active');
+          const dm1Active = document.getElementById('view-dm1').classList.contains('active');
+          if (ficheActive) loadDeviceTelemetry(currentDeviceId);
+          // Historique des defauts rafraichi lui aussi : avant, il n'etait charge
+          // qu'a l'ouverture de la fiche, une panne en cours n'apparaissait pas.
+          if (ficheActive || dm1Active) loadDeviceDTCs(currentDeviceId);
       }, 5000);
   });
 </script>
