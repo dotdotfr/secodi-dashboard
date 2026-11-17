@@ -3364,13 +3364,18 @@
       const tr = document.createElement('tr');
       const isActif = (dtc.status || '').toLowerCase() === 'actif';
       const statusClass = isActif ? 'dm1-active' : 'dm1-resolved';
-      const lampClass = isActif ? 'lamp-red' : 'lamp-off';
+      // Voyant lu dans le DM1 par le worker (Rouge = arret moteur requis,
+      // Ambre = avertissement, MIL = pollution, Protection, Aucun).
+      const lamp = dtc.lamp_state || 'Aucun';
+      const LAMP_CLASS = { 'Rouge': 'lamp-red', 'Ambre': 'lamp-amber', 'MIL': 'lamp-amber', 'Protection': 'lamp-amber' };
+      const lampClass = isActif ? (LAMP_CLASS[lamp] || 'lamp-off') : 'lamp-off';
+      const lampLabel = isActif ? lamp : 'Off';
 
       const codeTitle = dtc.raw_spn ? ` title="Valeur brute concaténée : ${dtc.raw_spn} (= SPN×32+FMI)"` : '';
       tr.innerHTML = `
-        <td class="dm1-date">${fmtDtcPeriod(dtc)}</td>
+        <td class="dm1-date"${dtc.ts_estimated ? ' title="Date estimée : le boîtier n\'avait pas l\'heure quand ce défaut a été capté"' : ''}>${dtc.ts_estimated ? '≈ ' : ''}${fmtDtcPeriod(dtc)}</td>
         <td class="dm1-code"${codeTitle}>${dtc.spn} / ${dtc.fmi}</td>
-        <td><span class="dm1-lamp ${lampClass}"><span class="lamp-icon"></span>${isActif ? 'Rouge' : 'Off'}</span></td>
+        <td><span class="dm1-lamp ${lampClass}"><span class="lamp-icon"></span>${lampLabel}</span></td>
         <td>${dtc.libelle}</td>
         <td class="${statusClass}">${dtc.status}</td>
         <td class="mono">${dtc.occurrence_count}</td>
