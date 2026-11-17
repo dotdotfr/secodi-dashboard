@@ -412,7 +412,7 @@ let st={mode:'idleoff',connected:false,connecting:false,engineOn:false,activeWif
  dispBacklog:0,backlogAnchor:0,backlogAnchorTs:0,  // backlog : valeur affichée + ancre (valeur, instant)
  _anchorFresh:false,_prevNet:null,_prevDraining:null,_lastFrame:0,  // détection des changements de débit (ré-ancrage)
  ssid:null,                         // SSID confirmé par la télémétrie (source de vérité)
- lastHbTs:0,lastOnline:null,        // dernier heartbeat vu (last_seen_ts serveur) + dernier état en ligne connu
+ lastHbTs:0,lastHbSig:null,lastOnline:null,        // dernier heartbeat vu (last_seen_ts serveur) + dernier état en ligne connu
  hbChangedAt:0,hbIsNew:false,       // instant (horloge page) où last_seen_ts a changé + « heartbeat neuf à appliquer »
  lastCanRate:0,                     // dernier débit CAN non nul vu en direct (estimation hors réseau)
  telemetryLost:false,               // fetch en échec : affichage figé, rien n'est extrapolé
@@ -669,11 +669,17 @@ async function poll(){
     if(st.telemetryLost){ st.telemetryLost=false; st.lastSig=null; }  // retour après échec : ré-appliquer
 
     // ---- Fraîcheur du heartbeat ----
-    // L'âge est mesuré sur l'horloge de la page (instant où last_seen_ts a changé),
+    // L'âge est mesuré sur l'horloge de la page (instant où le heartbeat a changé),
     // pas en comparant avec l'horloge serveur : insensible au décalage d'horloge.
     // Seule la toute première lecture estime l'âge depuis l'horodatage serveur.
+    // Le changement est détecté sur uptime_s, écrit UNIQUEMENT par le heartbeat :
+    // last_seen_ts est aussi avancé par d'autres routes de l'API (lecture de la
+    // télémétrie par le dashboard), ce qui affichait « en ligne » sans heartbeat.
+    // Repli sur last_seen_ts pour un firmware qui n'envoie pas uptime_s.
     const hb=Number(raw.last_seen_ts)||0;
-    if(hb && hb!==st.lastHbTs){
+    const hbSig = (raw.uptime_s!=null) ? 'u'+raw.uptime_s : hb;
+    if(hb && hbSig!==st.lastHbSig){
+      st.lastHbSig = hbSig;
       st.hbChangedAt = st.lastHbTs ? Date.now() : Math.min(Date.now(), hb);
       st.lastHbTs = hb; st.hbIsNew = true;
     }

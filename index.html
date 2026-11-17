@@ -481,6 +481,36 @@
     color: var(--jt-text-soft);
     margin-top: 2px;
   }
+  /* Flotte de demonstration : marque discrete + interrupteur */
+  .demo-chip {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 0 5px;
+    border: 1px solid var(--jt-border);
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    color: var(--jt-muted);
+    vertical-align: middle;
+    text-transform: lowercase;
+  }
+  .demo-chip[hidden] { display: none; }
+  .demo-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--jt-text-soft);
+    cursor: pointer;
+    user-select: none;
+  }
+  .gauges-age {
+    margin: 0 0 8px;
+    font-size: 12px;
+    color: var(--jt-text-soft);
+  }
+  .gauges-age[hidden] { display: none; }
   .device-last-seen {
     font-family: 'Share Tech Mono', monospace;
     font-size: 11px;
@@ -1629,6 +1659,10 @@
         <div class="pt-icon">⊞</div>
         <div class="pt-text">MONITORING \ VUE PARC SECODI</div>
         <div class="pt-actions">
+          <label class="demo-toggle" title="Engins fictifs ajoutés pour montrer une flotte complète">
+            <input type="checkbox" id="demo-toggle" onchange="setDemoFleet(this.checked)">
+            Flotte de démonstration
+          </label>
           <button class="btn">Exporter</button>
           <button class="btn btn-primary">+ Ajouter un engin</button>
         </div>
@@ -1664,43 +1698,13 @@
             <div class="panel-header">
               <span class="ph-icon">📍</span>
               <span>Localisation des engins</span>
-              <span class="ph-meta">5 engins · mise à jour temps réel</span>
+              <span class="ph-meta" id="map-meta">mise à jour temps réel</span>
             </div>
             <div class="map-wrap" id="map-wrap">
             <svg class="france-svg" viewBox="0 0 420 460" xmlns="http://www.w3.org/2000/svg">
               <path class="france-shape" d="M374.5,194.9L370.5,197.1L367.0,200.6L372.4,201.9L369.2,206.4L362.6,212.4L360.2,215.9L355.2,218.3L353.3,226.0L348.8,230.9L344.3,236.8L342.1,243.1L343.9,250.4L339.5,251.9L341.7,254.8L348.6,252.0L347.6,248.1L352.6,245.6L359.4,243.5L365.1,247.6L364.6,252.5L367.0,257.3L370.1,261.2L371.9,264.9L368.7,268.3L364.5,271.3L368.5,277.2L370.3,282.3L374.0,286.6L374.7,290.3L373.8,295.2L368.4,298.3L364.8,299.3L359.3,301.0L362.7,305.1L363.6,310.1L369.7,312.7L371.9,318.3L369.2,320.5L368.5,324.8L367.7,329.5L367.1,334.2L370.3,337.7L374.8,341.3L379.0,343.9L383.6,344.5L390.1,342.3L392.2,347.3L389.1,352.2L385.6,356.3L383.1,362.0L379.6,364.1L376.4,365.3L372.6,369.6L369.2,372.1L367.2,375.5L362.4,376.5L357.9,382.2L360.7,382.2L359.0,387.4L351.3,388.4L348.5,389.2L344.9,393.3L340.8,390.3L337.6,390.7L333.2,389.3L329.6,386.2L323.5,385.2L321.1,383.7L317.5,379.6L310.5,378.8L305.6,376.5L301.2,379.0L297.0,375.4L290.9,374.5L282.4,369.9L273.2,375.0L267.3,378.8L259.4,382.5L251.2,392.8L250.1,403.4L250.7,415.0L253.6,417.7L250.4,418.7L246.6,418.5L241.4,420.0L236.1,423.0L232.8,422.9L226.3,419.4L221.3,422.3L217.3,420.0L214.0,418.1L210.5,414.4L210.6,411.7L205.2,409.9L202.0,412.2L200.0,408.5L195.1,406.6L190.3,404.2L182.1,401.6L178.1,403.2L175.6,408.0L169.7,407.2L165.8,408.0L161.9,406.8L155.9,408.1L150.5,403.0L145.8,403.4L141.2,403.7L139.4,401.9L135.7,397.9L129.0,396.6L123.3,394.1L118.7,391.8L117.0,391.0L114.7,388.9L114.8,382.4L109.8,383.4L105.2,381.4L107.9,376.4L113.4,367.0L117.7,344.4L120.4,324.7L124.9,321.8L123.8,317.2L120.1,320.0L121.6,301.1L123.2,283.2L126.2,283.2L133.3,290.4L139.3,305.2L137.4,298.3L133.4,285.5L127.1,278.7L120.1,274.6L122.6,268.5L125.4,263.7L124.3,257.4L121.1,255.1L123.1,250.3L121.1,248.7L115.2,246.4L110.7,243.5L102.4,238.3L97.5,229.6L95.2,219.4L93.5,212.3L90.1,210.4L91.3,204.8L84.8,204.7L80.0,200.6L82.4,197.5L81.2,193.9L77.1,193.7L71.1,195.1L70.8,193.2L75.2,190.9L71.1,189.8L65.8,191.3L62.6,196.2L61.7,190.3L62.7,185.9L60.0,188.6L54.8,186.1L50.8,181.5L50.7,181.6L45.9,182.8L39.2,180.0L34.0,178.9L31.3,180.3L25.1,181.9L23.3,174.5L16.9,171.6L15.9,169.7L22.0,168.5L27.9,167.0L26.1,163.7L19.3,165.4L17.7,161.3L19.4,159.8L23.6,160.6L29.4,159.7L24.8,158.4L22.2,155.8L15.5,157.1L12.6,155.6L12.5,150.6L17.1,147.2L20.9,145.3L26.5,143.1L34.4,142.3L37.0,141.7L40.9,145.1L43.3,141.4L47.2,143.1L48.8,138.7L53.5,137.5L59.1,134.9L63.7,134.4L66.2,138.9L70.2,143.0L73.5,147.6L76.2,149.3L82.6,145.2L88.0,143.6L88.9,144.3L92.7,144.9L96.5,146.8L97.2,146.5L98.8,142.1L100.9,144.2L110.8,144.9L111.9,142.2L109.0,135.7L110.8,131.6L109.3,122.7L107.1,116.8L102.2,108.5L101.3,104.1L98.9,97.8L101.8,97.0L106.9,99.4L113.5,97.9L120.1,99.6L118.0,104.0L121.9,111.8L129.2,111.0L139.5,113.5L148.6,115.3L161.1,111.1L168.1,109.0L161.4,108.0L161.9,101.1L166.4,95.9L175.2,90.9L184.3,88.9L195.6,84.4L203.7,75.3L208.3,74.7L204.9,68.7L205.8,67.4L205.8,59.3L206.6,49.0L209.2,43.6L216.0,40.6L224.4,38.3L231.5,37.4L237.8,42.3L241.0,49.5L245.0,53.0L250.8,49.6L256.4,52.6L257.5,58.6L262.1,61.7L266.7,62.5L269.4,69.4L274.9,68.6L280.5,69.0L284.2,75.2L285.3,79.4L284.1,84.7L288.7,85.6L294.9,86.6L300.7,80.0L306.5,78.2L304.9,82.5L305.4,87.2L307.6,93.6L313.2,95.7L317.1,98.1L321.7,101.2L326.2,105.7L329.9,104.0L335.2,105.5L341.0,108.3L347.9,105.9L352.9,107.5L357.4,113.2L360.2,117.0L362.6,121.3L366.2,118.7L370.5,119.9L375.3,123.2L380.6,122.1L385.5,122.2L389.7,125.4L394.7,125.6L400.3,127.4L407.7,129.6L402.7,137.9L397.6,143.5L395.1,149.8L393.2,158.0L388.8,165.8L387.9,171.5L387.7,179.4L386.4,187.8L386.5,194.1L384.2,196.1L377.6,197.7Z"/>
 
-              <!-- Pin Reims (51) -->
-              <g class="map-pin" onclick="selectAndGoToFiche('secodi-demo-01')">
-                <circle id="map-dot-secodi-demo-01" class="map-pin-bg" cx="265" cy="125" r="9" fill="#2E7D32"/>
-                <circle cx="265" cy="125" r="3.5" fill="white"/>
-                <text class="map-pin-label" x="276" y="129">Reims</text>
-              </g>
-              <!-- Pin Beaune (21) -->
-              <g class="map-pin" onclick="selectAndGoToFiche('secodi-demo-02')">
-                <circle id="map-dot-secodi-demo-02" class="map-pin-bg" cx="275" cy="200" r="10" fill="#D97706"/>
-                <circle cx="275" cy="200" r="4" fill="white"/>
-                <text class="map-pin-label" x="286" y="204">Beaune</text>
-              </g>
-              <!-- Pin Bordeaux (33) -->
-              <g class="map-pin" onclick="selectAndGoToFiche('secodi-demo-03')">
-                <circle id="map-dot-secodi-demo-03" class="map-pin-bg" cx="135" cy="295" r="10" fill="#B71C1C"/>
-                <circle cx="135" cy="295" r="4" fill="white"/>
-                <text class="map-pin-label" x="146" y="299">Bordeaux</text>
-              </g>
-              <!-- Pin Angers (49) -->
-              <g class="map-pin" onclick="selectAndGoToFiche('secodi-demo-04')">
-                <circle id="map-dot-secodi-demo-04" class="map-pin-bg" cx="145" cy="195" r="9" fill="#2E7D32"/>
-                <circle cx="145" cy="195" r="3.5" fill="white"/>
-                <text class="map-pin-label" x="100" y="199">Angers</text>
-              </g>
-              <!-- Pin Avignon (84) -->
-              <g class="map-pin" onclick="selectAndGoToFiche('secodi-demo-05')">
-                <circle id="map-dot-secodi-demo-05" class="map-pin-bg" cx="295" cy="335" r="9" fill="#9CA3AF"/>
-                <circle cx="295" cy="335" r="3.5" fill="white"/>
-                <text class="map-pin-label" x="306" y="339">Avignon</text>
-              </g>
-              <!-- Pins positionnes par le GPS reel des #dot-BEE (cf. refreshFleetLive) -->
+              <!-- Pins positionnes par le GPS des engins, reels et de demonstration (cf. refreshFleetLive) -->
               <g id="gps-pins"></g>
             </svg>
             </div>
@@ -1733,6 +1737,7 @@
       <div class="page-title-bar">
         <div class="pt-icon">◆</div>
         <div class="pt-text">MONITORING \ FICHE ENGIN — secodi-demo-02</div>
+        <span class="demo-chip" id="fiche-demo-chip" title="Engin fictif de la flotte de démonstration">démo</span>
         <div class="pt-actions">
           <button class="btn" onclick="showView('parc')">← Retour parc</button>
           <button class="btn btn-primary">Programmer intervention</button>
@@ -1765,7 +1770,7 @@
             </svg>
           </div>
           <div>
-            <div class="engin-info-id">secodi-demo-02 · client : SECODI / Domaine Picard</div>
+            <div class="engin-info-id">secodi-demo-02 · client : Domaine viticole (Côte-d'Or)</div>
             <div class="engin-info-name">Bobard VSH 1500 — Tracteur viticole</div>
             <div class="engin-info-details">
               <div class="info-block">
@@ -1882,6 +1887,7 @@
           </div>
         </section>
 
+        <div class="gauges-age" id="gauges-age" hidden></div>
         <!-- GAUGES style Jaltest (cadrans noirs aiguille rouge) -->
         <div class="gauges-grid">
 
@@ -2630,6 +2636,20 @@
   }
 
   async function adminFetch(url, opts = {}) {
+    const demo = demoResponse(url);
+    if (demo) return demo;
+    if (demoFleetOn && /\/devices$/.test(url)) {
+      // Liste du parc : vrais engins de l'API + flotte de demonstration.
+      // API injoignable : la flotte de demonstration reste affichee.
+      const real = await realFetch(url, opts).catch(() => null);
+      if (real && real.status === 401) return real;
+      const list = real && real.ok ? await real.json() : [];
+      return demoJson([...list.filter(d => !DEMO_FLEET[d.device_id]), ...demoDeviceSummaries()]);
+    }
+    return realFetch(url, opts);
+  }
+
+  async function realFetch(url, opts = {}) {
     const headers = Object.assign({}, opts.headers, {
       'Authorization': 'Bearer ' + getAdminToken(),
     });
@@ -2647,12 +2667,131 @@
   let globalFleetData = []; 
 
   const ENGINE_METADATA = {
-    "secodi-demo-01": { name: "Bobard VSH 1500", type: "Tracteur viticole", motor: "Perkins 1106D-E66TA", hours: "3 412,8 h", client: "SECODI / Champagne Vranken", loc: "Reims (51)", slope: -12 },
-    "secodi-demo-02": { name: "Bobard VSH 1500", type: "Tracteur viticole", motor: "Perkins 1106D-E66TA", hours: "1 234,5 h", client: "SECODI / Domaine Picard", loc: "Beaune (21)", slope: -84 },
-    "secodi-demo-03": { name: "Bobard VSH 1500", type: "Tracteur viticole", motor: "Perkins 1106D-E66TA", hours: "2 890,1 h", client: "SECODI / Château Margaux", loc: "Bordeaux (33)", slope: -5 },
-    "secodi-demo-04": { name: "Groupe Perkins 404D", type: "Groupe Électrogène", motor: "Perkins 404D-22", hours: "543,2 h", client: "InoDesign Atelier", loc: "Angers (49)", slope: 0 },
-    "secodi-demo-05": { name: "Motopompe Perkins", type: "Pompe Industrielle", motor: "Perkins 403D-15", hours: "89,0 h", client: "AgriProvence", loc: "Avignon (84)", slope: -2 }
+    "secodi-demo-01": { name: "Bobard VSH 1500", type: "Tracteur viticole", motor: "Perkins 1106D-E66TA", hours: "3 412,8 h", client: "Domaine viticole (Marne)", loc: "Reims (51)", slope: -12 },
+    "secodi-demo-02": { name: "Bobard VSH 1500", type: "Tracteur viticole", motor: "Perkins 1106D-E66TA", hours: "1 234,5 h", client: "Domaine viticole (Côte-d'Or)", loc: "Beaune (21)", slope: -84 },
+    "secodi-demo-03": { name: "Bobard VSH 1500", type: "Tracteur viticole", motor: "Perkins 1106D-E66TA", hours: "2 890,1 h", client: "Exploitation viticole (Gironde)", loc: "Bordeaux (33)", slope: -5 },
+    "secodi-demo-04": { name: "Groupe Perkins 404D", type: "Groupe Électrogène", motor: "Perkins 404D-22", hours: "543,2 h", client: "Atelier de production (Maine-et-Loire)", loc: "Angers (49)", slope: 0 },
+    "secodi-demo-05": { name: "Motopompe Perkins", type: "Pompe Industrielle", motor: "Perkins 403D-15", hours: "89,0 h", client: "Exploitation agricole (Vaucluse)", loc: "Avignon (84)", slope: -2 }
   };
+
+  // --- FLOTTE DE DEMONSTRATION ---
+  // Pas encore assez de prototypes : 5 engins fictifs completent les vrais
+  // #dot-BEE pour montrer une flotte de taille realiste. Ils passent par le MEME
+  // chemin que les vrais (adminFetch -> memes reponses que l'API), donc
+  // compteurs, liste, carte, fiche et defauts restent coherents entre eux.
+  // Marques "demo" a l'ecran ; masquables par l'interrupteur de la vue parc
+  // (choix retenu dans le navigateur).
+  const DEMO_FLEET = {
+    "secodi-demo-01": { status: "OK",       lat: 49.2583, lon: 4.0317, battery: 27.6, slope: -12, coolant: 86,  oil: 380, rpm: 1650, ssid: "Domaine-Atelier" },
+    "secodi-demo-02": { status: "Warning",  lat: 47.0260, lon: 4.8400, battery: 24.6, slope: -84, coolant: 92,  oil: 340, rpm: 1500, ssid: "Exploitation-WiFi",
+      dtcs: [
+        { spn: 168, fmi: 18, libelle: "Tension batterie — basse (modérément grave)", status: "Actif",  lamp_state: "Ambre", ago_h: 30,  dur_h: 30,   n: 4 },
+        { spn: 110, fmi: 15, libelle: "Température liquide de refroidissement — haute (peu grave)", status: "Résolu", lamp_state: "Ambre", ago_h: 70, dur_h: 0.4, n: 1 },
+      ] },
+    "secodi-demo-03": { status: "Critical", lat: 44.8378, lon: -0.5792, battery: 27.1, slope: -5, coolant: 104, oil: 90,  rpm: 1200, ssid: "Chai-Bureau",
+      dtcs: [
+        { spn: 100, fmi: 1,  libelle: "Pression d'huile moteur — très basse (grave)", status: "Actif",  lamp_state: "Rouge", ago_h: 2,   dur_h: 2,    n: 2 },
+        { spn: 100, fmi: 17, libelle: "Pression d'huile moteur — basse (peu grave)",  status: "Résolu", lamp_state: "Ambre", ago_h: 26,  dur_h: 1.5,  n: 3 },
+      ] },
+    "secodi-demo-04": { status: "OK",       lat: 47.4784, lon: -0.5632, battery: 27.9, slope: 0,   coolant: 82,  oil: 410, rpm: 1500, ssid: "Atelier-Prod" },
+    "secodi-demo-05": { status: "OK",       lat: 43.9493, lon: 4.8055, battery: 26.8, slope: -2,  coolant: 0,   oil: 0,   rpm: 0,    offlineSinceH: 52 },
+  };
+  let demoFleetOn = true;
+  try { demoFleetOn = localStorage.getItem('dotbee_demo_fleet') !== 'off'; } catch (e) { /* stockage indisponible */ }
+  function isDemo(deviceId) { return demoFleetOn && Object.prototype.hasOwnProperty.call(DEMO_FLEET, deviceId); }
+  function setDemoFleet(on) {
+    demoFleetOn = on;
+    try { localStorage.setItem('dotbee_demo_fleet', on ? 'on' : 'off'); } catch (e) { /* idem */ }
+    if (!on && currentDeviceId && DEMO_FLEET[currentDeviceId]) { currentDeviceId = null; showView('parc'); }
+    loadVueParc();
+  }
+
+  // Leger mouvement des valeurs (meme valeur pour tous a un instant donne).
+  function demoWiggle(seed, amp) {
+    const t = Date.now() / 1000;
+    return amp * (Math.sin(t / 7 + seed) * 0.6 + Math.sin(t / 2.3 + seed * 3) * 0.4);
+  }
+  function demoJson(obj) {
+    return new Response(JSON.stringify(obj), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
+  function demoDeviceSummaries() {
+    const now = Date.now();
+    return Object.entries(DEMO_FLEET).map(([id, d]) => ({
+      device_id: id, status: d.status, latitude: d.lat, longitude: d.lon,
+      last_seen: new Date(d.offlineSinceH ? now - d.offlineSinceH * 3600e3 : now - 4000).toISOString(),
+    }));
+  }
+  // Reponse fictive pour une route de l'API, ou null si la route n'est pas
+  // celle d'un engin de demonstration.
+  function demoResponse(url) {
+    const m = url.match(/\/(?:admin\/)?devices\/([^/?]+)\/([^?]+)/);
+    if (!m || !isDemo(decodeURIComponent(m[1]))) return null;
+    const id = decodeURIComponent(m[1]), route = m[2], d = DEMO_FLEET[id];
+    const seed = parseInt(id.slice(-2), 10);
+    const now = Date.now();
+    const offline = !!d.offlineSinceH;
+    const seenAt = offline ? now - d.offlineSinceH * 3600e3 : now;
+    if (route === 'status') {
+      return demoJson({
+        // uptime_s change toutes les 10 s comme un vrai heartbeat ; fige si hors ligne.
+        uptime_s: offline ? 86400 : Math.floor(now / 10000) * 10,
+        last_seen_ts: seenAt,
+        mqtt_connected: !offline,
+        current_ssid: offline ? null : d.ssid,
+        connectivity_state: 'streaming',
+        mqtt_tx_fps: offline ? 0 : 38 + Math.round(demoWiggle(seed, 6)),
+        fe_rps: 0,
+        sd_pending_records: 0,
+        sd_used_percent: 3,
+        gps_fix: true, latitude: d.lat, longitude: d.lon,
+      });
+    }
+    if (route === 'telemetry/current') {
+      const w = (amp) => offline ? 0 : demoWiggle(seed, amp);
+      return demoJson({
+        device: id,
+        timestamp: new Date(seenAt).toISOString(),
+        telemetry: {
+          battery_voltage: +(d.battery + w(0.15)).toFixed(2),
+          coolant_temp: offline ? null : Math.round(d.coolant + w(1.5)),
+          oil_pressure: offline ? null : Math.round(d.oil + w(12)),
+          engine_speed: offline ? null : Math.round(d.rpm + w(25)),
+        },
+      });
+    }
+    if (route.startsWith('telemetry/history')) {
+      // Une moyenne par heure sur 7 jours, avec la derive batterie de l'engin.
+      const pts = [];
+      for (let h = 7 * 24; h >= 0; h--) {
+        const t = now - h * 3600e3;
+        if (offline && t > seenAt) break;
+        const daysAgo = h / 24;
+        pts.push({ time: new Date(t).toISOString(),
+                   value: d.battery - (d.slope / 1000) * daysAgo + 0.08 * Math.sin(h / 3 + seed) });
+      }
+      return demoJson(pts);
+    }
+    if (route === 'dtc') {
+      return demoJson({ dtcs: (d.dtcs || []).map(x => ({
+        spn: x.spn, fmi: x.fmi, libelle: x.libelle, status: x.status, lamp_state: x.lamp_state,
+        occurrence_count: x.n,
+        ts: now - x.ago_h * 3600e3,
+        last_ts: x.status === 'Actif' ? now : now - (x.ago_h - x.dur_h) * 3600e3,
+      })) });
+    }
+    // info (Component ID, heures moteur) : pas de reponse -> valeurs de ENGINE_METADATA.
+    return new Response('{}', { status: 404, headers: { 'Content-Type': 'application/json' } });
+  }
+
+  // Description d'un engin : fiche declaree pour la demo, sinon un vrai #dot-BEE
+  // (nom tire de son identifiant ; moteur, heures et commune viennent ensuite
+  // de son Component ID, de SPN 247 et de son GPS).
+  function engineMeta(deviceId) {
+    return ENGINE_METADATA[deviceId] || {
+      name: `#dot-BEE ${String(deviceId).replace(/^sentinel-/, '')}`, type: "Engin équipé",
+      motor: "—", hours: "—", client: "—", loc: "—", slope: 0,
+    };
+  }
 
   // --- DÉCODAGE DES "SPN" CONCATÉNÉS (artéfact de multiplexage J1939) ---
   // Sur certaines trames DM1, le SPN (19 bits) et le FMI (5 bits) sont lus comme un
@@ -2709,7 +2848,9 @@
     showView('fiche');
 
     document.querySelector('#view-fiche .pt-text').textContent = `MONITORING \\ FICHE ENGIN — ${deviceId}`;
-    const meta = ENGINE_METADATA[deviceId] || { name: "Engin Inconnu", type: "", motor: "N/A", hours: "N/A", client: "N/A", loc: "N/A", slope: 0 };
+    const meta = engineMeta(deviceId);
+    const chip = document.getElementById('fiche-demo-chip');
+    if (chip) chip.hidden = !isDemo(deviceId);
 
     const infoBlocks = document.querySelectorAll('.engin-header .info-block .info-value');
     const statusTag  = document.querySelector('.engin-header .status-tag');
@@ -2753,15 +2894,18 @@
     }
 
     if (liveData) {
-        if (liveData.status === "OK") {
+        // Etat affiche = celui de la vue parc (connexion comprise) : un engin
+        // hors reseau n'est plus "En service" sur sa fiche.
+        const shownStatus = fleetView[deviceId] || liveData.status;
+        if (shownStatus === "OK") {
             statusTag.className = "status-tag ok";
             statusTag.style.cssText = "background: var(--ok-bg); color: #1B5E20; border: 1px solid #A5D6A7;";
             statusTag.innerHTML = `<span style="width:8px;height:8px;border-radius:50%;background:var(--ok)"></span>En service`;
-        } else if (liveData.status === "Warning") {
+        } else if (shownStatus === "Warning") {
             statusTag.className = "status-tag warn";
             statusTag.style.cssText = "background: var(--warn-bg); color: #8A4D00; border: 1px solid #FFD9A0;";
             statusTag.innerHTML = `<span style="width:8px;height:8px;border-radius:50%;background:var(--warn)"></span>À surveiller`;
-        } else if (liveData.status === "Critical") {
+        } else if (shownStatus === "Critical") {
             statusTag.className = "status-tag critical";
             statusTag.style.cssText = "background: var(--critical-bg); color: #B71C1C; border: 1px solid #FFCDD2;";
             statusTag.innerHTML = `<span style="width:8px;height:8px;border-radius:50%;background:var(--critical)"></span>Défaut actif`;
@@ -3142,7 +3286,7 @@
     if (data?.gps_fix && data?.latitude != null && data?.longitude != null) {
       if (currentDeviceId) {
         deviceGps[currentDeviceId] = { lat: data.latitude, lon: data.longitude };
-        const meta = ENGINE_METADATA[currentDeviceId] || { loc: 'N/A' };
+        const meta = engineMeta(currentDeviceId);
         setFicheLocation(currentDeviceId, data.latitude, data.longitude, meta.loc);
       }
       const lat = data.latitude.toFixed(5);
@@ -3175,6 +3319,7 @@
       if (!response.ok) throw new Error("Télémétrie introuvable");
       const data = await response.json();
       const telemetry = data.telemetry || data;
+      showValuesAge(data.timestamp);
       const fieldToGauge = {
         battery_voltage: { spn: 168, min: 0, max: 36, decimals: 1 },
         coolant_temp: { spn: 110, min: 0, max: 150, decimals: 0 },
@@ -3190,7 +3335,7 @@
       });
 
       // 2. On interroge l'historique sur 7 jours pour le graphique
-      const meta = ENGINE_METADATA[deviceId] || { slope: 0 };
+      const meta = engineMeta(deviceId);
       try {
           const histResponse = await adminFetch(`${API_URL}/devices/${deviceId}/telemetry/history?days=7`);
           if (histResponse.ok) {
@@ -3207,8 +3352,9 @@
       // Echec de la telemetrie seulement : le bloc connectivite est gere a part
       // (loadDeviceStatus) et n'est plus force a "hors reseau" ici.
       console.warn(`Impossible de charger la télémétrie pour ${deviceId}:`, error);
+      showValuesAge(null, true);
       setGaugeValue(168, null); setGaugeValue(110, null); setGaugeValue(100, null); setGaugeValue(190, null);
-      const meta = ENGINE_METADATA[deviceId] || { slope: 0 };
+      const meta = engineMeta(deviceId);
       updateBatteryChart(meta, []);
     }
   }
@@ -3261,6 +3407,34 @@
     return { ...d, libelle: heal || J1939_STD_LABELS[d.spn] || `SPN non documenté (${d.spn})` };
   }
 
+  // Age des valeurs affichees : un vrai #dot-BEE peut ne plus avoir envoye depuis
+  // longtemps, ses cadrans montrent alors sa derniere valeur connue.
+  function showValuesAge(timestamp, none = false) {
+    const el = document.getElementById('gauges-age');
+    if (!el) return;
+    if (none) {
+      el.textContent = 'Aucune valeur reçue ces 7 derniers jours.';
+      el.hidden = false;
+      return;
+    }
+    const age = timestamp ? Date.now() - new Date(timestamp).getTime() : 0;
+    if (!timestamp || age < 120000) { el.hidden = true; return; }
+    const when = new Date(timestamp).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    el.textContent = `Dernières valeurs reçues le ${when} (il y a ${timeSince(timestamp)}).`;
+    el.hidden = false;
+  }
+
+  // Badges (barre laterale + onglet de la fiche) = nombre de défauts actifs de
+  // l'engin affiche ; masques a zero (ils gardaient la valeur de la maquette).
+  function setDtcBadges(n) {
+    [document.querySelector('.sidebar-item[data-view="dm1"] .si-badge'),
+     document.querySelector('.tab .tab-badge')].forEach(b => {
+      if (!b) return;
+      b.textContent = n;
+      b.style.display = n > 0 ? '' : 'none';
+    });
+  }
+
   // --- CHARGEMENT DYNAMIQUE DES CODES DEFAUTS DM1 ---
   async function loadDeviceDTCs(deviceId) {
     const tbody = document.getElementById('dtc-table-body');
@@ -3282,6 +3456,7 @@
         dtcRows = [];
         dtcPage = 0;
         tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--jt-text-soft);">Aucun défaut enregistré sur cet engin.</td></tr>`;
+        setDtcBadges(0);
         updateDM1Header([]);
         renderDTCPagination();
         return;
@@ -3305,6 +3480,7 @@
 
       if (dtcRows.length === 0) {
         tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--jt-text-soft);">Aucun défaut actif (trames DM1 vides uniquement).</td></tr>`;
+        setDtcBadges(0);
         updateDM1Header([]);
         renderDTCPagination();
         return;
@@ -3313,12 +3489,7 @@
       renderDTCPage();
       updateDM1Header(dtcRows);
 
-      // Badges (barre laterale + onglet de la fiche) = nombre de défauts actifs.
-      const actifsCount = dtcRows.filter(d => (d.status || '').toLowerCase() === 'actif').length;
-      const badge = document.querySelector('.sidebar-item[data-view="dm1"] .si-badge');
-      if (badge) badge.textContent = actifsCount;
-      const tabBadge = document.querySelector('.tab .tab-badge');
-      if (tabBadge) tabBadge.textContent = actifsCount;
+      setDtcBadges(dtcRows.filter(d => (d.status || '').toLowerCase() === 'actif').length);
 
     } catch (error) {
       console.warn(`Impossible de charger les DTC pour ${deviceId}:`, error);
@@ -3568,7 +3739,10 @@
       const label = document.createElementNS(NS, 'text');
       label.setAttribute('class', 'map-pin-label');
       label.setAttribute('x', c.x + 15); label.setAttribute('y', c.y + 4);
-      label.textContent = single ? c.items[0].device.device_id.replace(/^sentinel-/, '') : `${c.items.length} #dot-BEE`;
+      const one = c.items[0].device.device_id;
+      label.textContent = single
+        ? (isDemo(one) ? `${engineMeta(one).loc.replace(/ \(\d+\)$/, '')} (démo)` : one.replace(/^sentinel-/, ''))
+        : `${c.items.length} engins`;
       g.append(label);
       layer.appendChild(g);
     });
@@ -3586,7 +3760,7 @@
     picker.className = 'map-picker';
     const title = document.createElement('div');
     title.className = 'map-picker-title';
-    title.textContent = `${cluster.items.length} #dot-BEE à cet endroit`;
+    title.textContent = `${cluster.items.length} engins à cet endroit`;
     picker.appendChild(title);
     cluster.items.forEach(i => {
       const b = document.createElement('button');
@@ -3621,6 +3795,16 @@
       globalFleetData = await response.json(); 
       
       document.getElementById('stat-total').textContent = globalFleetData.length;
+      const toggle = document.getElementById('demo-toggle');
+      if (toggle) toggle.checked = demoFleetOn;
+      const mapMeta = document.getElementById('map-meta');
+      if (mapMeta) mapMeta.textContent = `${globalFleetData.length} engin${globalFleetData.length > 1 ? 's' : ''} · mise à jour temps réel`;
+      if (globalFleetData.length === 0) {
+        document.getElementById('device-list-container').innerHTML =
+          '<div style="padding: 20px; text-align: center; color: var(--jt-text-soft);">Aucun #dot-BEE n\'a envoyé de données ces 30 derniers jours.</div>';
+        document.getElementById('gps-pins')?.replaceChildren();
+        return;
+      }
       // Compteurs avec le dernier etat live connu (connexion comprise) : evite
       // qu'ils basculent a chaque rafraichissement avant refreshFleetLive().
       const liveViews = globalFleetData.map(d => fleetView[d.device_id] || d.status);
@@ -3640,11 +3824,13 @@
         row.setAttribute('onclick', `selectAndGoToFiche('${device.device_id}')`);
         row.dataset.deviceId = device.device_id;
         
+        const meta = engineMeta(device.device_id);
+        const demo = isDemo(device.device_id);
         row.innerHTML = `
           <span class="status-pastille ${cssClass}"></span>
           <div>
-            <div class="device-id">${device.device_id}</div>
-            <div class="device-meta">Données live #dot-BEE</div>
+            <div class="device-id">${device.device_id}${demo ? '<span class="demo-chip" title="Engin fictif de la flotte de démonstration">démo</span>' : ''}</div>
+            <div class="device-meta">${demo ? `${meta.name} · ${meta.loc}` : 'Données live #dot-BEE'}</div>
           </div>
           <div class="device-last-seen">${lastSeenStr !== 'Hors-ligne' ? 'il y a ' + lastSeenStr : lastSeenStr}</div>
         `;
@@ -3659,7 +3845,6 @@
       refreshFleetLive().catch(err => console.warn('Etat live du parc :', err));
 
       if (currentDeviceId && document.getElementById('view-fiche').classList.contains('active')) {
-          const meta = ENGINE_METADATA[currentDeviceId] || { name: "Engin Inconnu" };
           const infoBlocks = document.querySelectorAll('.engin-header .info-block .info-value');
           const liveData = globalFleetData.find(d => d.device_id === currentDeviceId);
           if (infoBlocks.length >= 4 && liveData) {
