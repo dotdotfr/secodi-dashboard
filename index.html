@@ -919,6 +919,19 @@
     margin-top: 4px;
   }
 
+  .conn-health {
+    margin: 6px auto 0;
+    max-width: 320px;
+    padding: 6px 10px;
+    border: 1px solid #FFD9A0;
+    border-radius: 4px;
+    background: var(--warn-bg);
+    color: #8A4D00;
+    font-size: 11.5px;
+    line-height: 1.45;
+    text-align: left;
+  }
+  .conn-health[hidden] { display: none; }
   .conn-gps-position a {
     color: inherit;
     text-decoration: none;
@@ -1825,6 +1838,7 @@
               </div>
 
               <div class="conn-gps-position" id="conn-gps-position">Position GPS indisponible</div>
+              <div class="conn-health" id="conn-health" hidden></div>
 
               <div class="dotbee-frame state-streaming" id="dotbee-frame">
                 <div class="offline-banner">⚠ Hors réseau</div>
@@ -3281,7 +3295,26 @@
     const gaugeContainers = document.querySelectorAll('.gauge-container');
     gaugeContainers.forEach(g => g.classList.toggle('gauge-frozen', !connected));
 
-    // 6. Position GPS (lat/lon issues du dernier heartbeat)
+    // 6. Sante du boitier (dernier heartbeat) : seulement ce qui demande attention.
+    const healthEl = document.getElementById('conn-health');
+    if (healthEl) {
+      const h = data?.health || {};
+      const issues = [];
+      if (h.can_mode === 'listen') {
+        issues.push(h.can_strikes > 0
+          ? `CAN en écoute seule : filet de sécurité déclenché ${h.can_strikes} fois (le boîtier perturbait le bus).`
+          : 'CAN en écoute seule ou arrêté.');
+      }
+      if (h.time_valid === 0) issues.push("Pas d'heure fiable : les données sont datées par estimation.");
+      if (h.tb_ok === 0) issues.push('Registre des démarrages indisponible (mémoire interne).');
+      const lost = (h.sd_records_lost || 0) + (h.sd_write_dropped || 0) + (h.sd_records_corrupt || 0);
+      if (lost > 0) issues.push(`${lost} trame${lost > 1 ? 's' : ''} perdue${lost > 1 ? 's' : ''} ou illisible${lost > 1 ? 's' : ''} sur la carte SD depuis le démarrage.`);
+      healthEl.textContent = issues.map(i => '⚠ ' + i).join('\n');
+      healthEl.style.whiteSpace = 'pre-line';
+      healthEl.hidden = issues.length === 0;
+    }
+
+    // 7. Position GPS (lat/lon issues du dernier heartbeat)
     const gpsEl = document.getElementById('conn-gps-position');
     if (data?.gps_fix && data?.latitude != null && data?.longitude != null) {
       if (currentDeviceId) {
